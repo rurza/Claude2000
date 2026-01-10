@@ -459,4 +459,3 @@ fi
 - [README.md](./README.md) - Hooks overview
 - [../../docs/hooks/README.md](../../docs/hooks/README.md) - Complete hooks reference
 - [../../docs/skills/README.md](../../docs/skills/README.md) - Skills integration
-- [../../thoughts/shared/handoffs/general/2026-01-10_13-28_hook-path-fixes.md](../../thoughts/shared/handoffs/general/2026-01-10_13-28_hook-path-fixes.md) - Hook path resolution fix documentation
