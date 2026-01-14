@@ -677,13 +677,28 @@ node_modules/
 
 The semantic index uses all 5 layers plus 10 lines of surrounding code context—not just docstrings.
 
-#### Hook Integration
+#### Hook Integration (Optional)
 
-TLDR is automatically integrated via hooks:
+TLDR hooks are **enabled by default** for automatic token savings. You can opt-out if you prefer manual control.
 
+**With hooks enabled (default):**
 - **tldr-read-enforcer**: Returns L1+L2+L3 instead of full file reads
 - **smart-search-router**: Routes Grep to `tldr search`
 - **post-tool-use-tracker**: Updates indexes when files change
+
+**With hooks disabled (opt-out):**
+- Use TLDR manually via CLI commands when needed
+- Tools behave as documented (Read returns files, Grep searches text)
+
+**Enable/disable during setup:**
+```bash
+uv run python -m scripts.setup.wizard  # Step 9 asks about hooks (default: Yes)
+```
+
+**Disable for existing installation:**
+```bash
+cd opc && python3 scripts/disable_tldr_hooks.py
+```
 
 [See TLDR documentation →](opc/packages/tldr-code/)
 
