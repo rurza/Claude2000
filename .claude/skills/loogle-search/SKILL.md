@@ -1,3 +1,7 @@
+---
+  name: loogle-search
+  description: Search Mathlib for lemmas by type signature pattern
+---
 # Loogle Search - Mathlib Type Signature Search
 
 Search Mathlib for lemmas by type signature pattern.

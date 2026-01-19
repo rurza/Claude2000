@@ -1,3 +1,9 @@
+---
+name: recall
+description: Query the memory system for relevant learnings from past sessions
+user-invocable: false
+---
+
 # Recall - Semantic Memory Retrieval
 
 Query the memory system for relevant learnings from past sessions.
