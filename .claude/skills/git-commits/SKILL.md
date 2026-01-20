@@ -12,7 +12,7 @@ When the user asks to commit, push, or save changes to git:
 
 **DO NOT** run `git commit` directly. Instead:
 
-```
+```text
 Skill("commit")
 ```
 
