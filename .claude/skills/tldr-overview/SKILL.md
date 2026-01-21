@@ -57,6 +57,7 @@ tldr cfg src/main.py main  # Get complexity
 {cfg output - functions with high cyclomatic complexity}
 
 ---
+name: tldr-overview
 Token cost: ~{N} tokens (vs ~{M} raw = {savings}% savings)
 ```
 

@@ -78,6 +78,7 @@ Key dependencies:
   - line A → line B (control)
 
 ---
+name: tldr-deep
 Total: ~{tokens} tokens (95% savings vs raw file)
 ```
 

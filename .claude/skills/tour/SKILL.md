@@ -23,6 +23,7 @@ Activate when user says things like:
 Give a warm, practical overview:
 
 ---
+name: tour
 
 ## What I Can Do
 
@@ -58,6 +59,7 @@ I can spawn sub-agents for complex tasks:
 **What would you like to work on?**
 
 ---
+name: tour
 
 ## Style Notes
 
