@@ -20,20 +20,17 @@ No Docker required! Claude2000 uses embedded PostgreSQL by default.
    uv run python install.py
    ```
 
-3. **Follow the wizard** (12 steps):
+3. **Follow the wizard** (9 steps):
    - Step 0: Backup existing ~/.claude
    - Step 1: Check system requirements
    - Step 2: Database configuration (embedded recommended)
-   - Step 3: Embedding configuration
-   - Step 4: API keys (optional)
-   - Step 5: Generate configuration
-   - Step 6: Database setup (migrations)
-   - Step 7: Claude Code integration
-   - Step 8: Math features (optional)
-   - Step 9: TLDR code analysis tool
-   - Step 10: Diagnostics tools
-   - Step 11: Loogle (optional, for theorem proving)
-   - Step 12: Install scripts to ~/.claude/claude2000/
+   - Step 3: Embedding configuration (local or ollama)
+   - Step 4: Generate configuration
+   - Step 5: Database setup (migrations)
+   - Step 6: Claude Code integration
+   - Step 7: TLDR code analysis tool
+   - Step 8: Diagnostics tools (shows what linters are available)
+   - Step 9: Install scripts to ~/.claude/claude2000/
 
 4. **Start Claude Code**:
    ```bash

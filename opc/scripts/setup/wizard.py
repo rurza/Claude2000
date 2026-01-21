@@ -38,20 +38,30 @@ try:
 
     console = Console()
 except ImportError:
+    import re
     rich_escape = lambda x: x  # No escaping needed without Rich
+
+    def _strip_rich_markup(text: str) -> str:
+        """Strip Rich markup tags like [bold], [green], [/bold], etc."""
+        if not isinstance(text, str):
+            return str(text)
+        return re.sub(r'\[/?[a-z_ ]+\]', '', text, flags=re.IGNORECASE)
+
     # Fallback for minimal environments
     class Console:
         def print(self, *args, **kwargs):
-            print(*args)
+            stripped = [_strip_rich_markup(str(a)) for a in args]
+            print(*stripped)
 
     class Panel:
         @staticmethod
         def fit(text, **kwargs):
-            return text
+            return _strip_rich_markup(text)
 
     class Confirm:
         @staticmethod
         def ask(prompt, default=False):
+            prompt = _strip_rich_markup(prompt)
             response = input(f"{prompt} [{'Y/n' if default else 'y/N'}]: ").strip().lower()
             if not response:
                 return default
@@ -60,6 +70,7 @@ except ImportError:
     class Prompt:
         @staticmethod
         def ask(prompt, choices=None, default=None, password=False):
+            prompt = _strip_rich_markup(prompt)
             if choices:
                 prompt = f"{prompt} ({'/'.join(choices)})"
             if default:
@@ -207,18 +218,12 @@ async def check_prerequisites_with_install_offers() -> dict[str, Any]:
         "container_runtime": None,  # "docker" or "podman"
         "python": shutil.which("python3") is not None,
         "uv": shutil.which("uv") is not None,
-        "elan": shutil.which("elan") is not None,  # Lean4 version manager
     }
 
     # Docker/Podman is now optional (only needed if using docker database mode)
     # Skip the Docker check entirely since we default to embedded postgres
     result["docker"] = False
     result["container_runtime"] = None
-
-    # Check elan/Lean4 (optional, for theorem proving with /prove skill)
-    if not result["elan"]:
-        console.print("\n  [dim]Optional: Lean4/elan not found (needed for /prove skill)[/dim]")
-        console.print("  [dim]Install with: curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh[/dim]")
 
     # Docker and elan are optional, so exclude from all_present check
     result["all_present"] = all([result["python"], result["uv"]])
@@ -331,22 +336,20 @@ async def check_prerequisites() -> dict[str, Any]:
     """Check if required tools are installed.
 
     Checks for:
-    - Docker (required for stack)
+    - Docker (optional, for docker database mode)
     - Python 3.11+ (already running if here)
     - uv package manager (required for deps)
-    - elan/Lean4 (optional, for theorem proving)
 
     Returns:
-        dict with keys: docker, python, uv, elan, all_present
+        dict with keys: docker, python, uv, all_present
     """
     result = {
         "docker": shutil.which("docker") is not None,
         "python": shutil.which("python3") is not None,
         "uv": shutil.which("uv") is not None,
-        "elan": shutil.which("elan") is not None,  # Optional: Lean4 version manager
     }
-    # elan is optional, so exclude from all_present check
-    result["all_present"] = all([result["docker"], result["python"], result["uv"]])
+    # docker is optional, so exclude from all_present check
+    result["all_present"] = all([result["python"], result["uv"]])
     return result
 
 
@@ -379,10 +382,8 @@ async def prompt_embedding_config() -> dict[str, str]:
     console.print("  Options:")
     console.print("    1. local - sentence-transformers (downloads ~1.3GB model)")
     console.print("    2. ollama - Use Ollama server (fast, recommended if you have Ollama)")
-    console.print("    3. openai - OpenAI API (requires API key)")
-    console.print("    4. voyage - Voyage AI API (requires API key)")
 
-    provider = Prompt.ask("Embedding provider", choices=["local", "ollama", "openai", "voyage"], default="local")
+    provider = Prompt.ask("Embedding provider", choices=["local", "ollama"], default="local")
 
     config = {"provider": provider}
 
@@ -395,33 +396,13 @@ async def prompt_embedding_config() -> dict[str, str]:
     return config
 
 
-async def prompt_api_keys() -> dict[str, str]:
-    """Prompt user for optional API keys.
-
-    Returns:
-        dict with keys: perplexity, nia, braintrust
-    """
-    console.print("\n[bold]API Keys (optional)[/bold]")
-    console.print("Press Enter to skip any key you don't have.\n")
-
-    perplexity = Prompt.ask("Perplexity API key (web search)", default="")
-    nia = Prompt.ask("Nia API key (documentation search)", default="")
-    braintrust = Prompt.ask("Braintrust API key (observability)", default="")
-
-    return {
-        "perplexity": perplexity,
-        "nia": nia,
-        "braintrust": braintrust,
-    }
-
-
 def generate_env_file(config: dict[str, Any], env_path: Path) -> None:
     """Generate .env file from configuration.
 
     If env_path exists, creates a backup before overwriting.
 
     Args:
-        config: Configuration dict with 'database' and 'api_keys' sections
+        config: Configuration dict with 'database' and 'embeddings' sections
         env_path: Path to write .env file
     """
     # Backup existing .env if present
@@ -471,7 +452,7 @@ def generate_env_file(config: dict[str, Any], env_path: Path) -> None:
     embeddings = config.get("embeddings", {})
     if embeddings:
         provider = embeddings.get("provider", "local")
-        lines.append("# Embedding provider (local, ollama, openai, voyage)")
+        lines.append("# Embedding provider (local, ollama)")
         lines.append(f"EMBEDDING_PROVIDER={provider}")
         if provider == "ollama":
             ollama_host = embeddings.get("host", "http://localhost:11434")
@@ -479,20 +460,6 @@ def generate_env_file(config: dict[str, Any], env_path: Path) -> None:
             lines.append(f"OLLAMA_HOST={ollama_host}")
             lines.append(f"OLLAMA_EMBED_MODEL={ollama_model}")
         lines.append("")
-
-    # API keys (only write non-empty keys)
-    api_keys = config.get("api_keys", {})
-    if api_keys:
-        has_keys = any(v for v in api_keys.values())
-        if has_keys:
-            lines.append("# API Keys")
-            if api_keys.get("perplexity"):
-                lines.append(f"PERPLEXITY_API_KEY={api_keys['perplexity']}")
-            if api_keys.get("nia"):
-                lines.append(f"NIA_API_KEY={api_keys['nia']}")
-            if api_keys.get("braintrust"):
-                lines.append(f"BRAINTRUST_API_KEY={api_keys['braintrust']}")
-            lines.append("")
 
     # Write file
     env_path.write_text("\n".join(lines))
@@ -515,7 +482,7 @@ async def run_setup_wizard() -> None:
     )
 
     # Step 0: Backup global ~/.claude (safety first)
-    console.print("\n[bold]Step 0/12: Backing up global Claude configuration...[/bold]")
+    console.print("\n[bold]Step 0/9: Backing up global Claude configuration...[/bold]")
     from scripts.setup.claude_integration import (
         backup_global_claude_dir,
         get_global_claude_dir,
@@ -532,7 +499,7 @@ async def run_setup_wizard() -> None:
         console.print("  [dim]No existing ~/.claude found (clean install)[/dim]")
 
     # Step 1: Check prerequisites (with installation offers)
-    console.print("\n[bold]Step 1/12: Checking system requirements...[/bold]")
+    console.print("\n[bold]Step 1/9: Checking system requirements...[/bold]")
     prereqs = await check_prerequisites_with_install_offers()
 
     if prereqs["python"]:
@@ -552,7 +519,7 @@ async def run_setup_wizard() -> None:
         sys.exit(1)
 
     # Step 2: Database config
-    console.print("\n[bold]Step 2/12: Database Configuration[/bold]")
+    console.print("\n[bold]Step 2/9: Database Configuration[/bold]")
     console.print("  Choose your database backend:")
     console.print("    [bold]embedded[/bold]  - Embedded PostgreSQL (recommended)")
     console.print("    [bold]sqlite[/bold]    - SQLite fallback (simplest, limited features)")
@@ -592,28 +559,21 @@ async def run_setup_wizard() -> None:
         db_config["mode"] = "docker"
 
     # Step 3: Embedding configuration
-    console.print("\n[bold]Step 3/12: Embedding Configuration[/bold]")
+    console.print("\n[bold]Step 3/9: Embedding Configuration[/bold]")
     if Confirm.ask("Configure embedding provider?", default=True):
         embeddings = await prompt_embedding_config()
     else:
         embeddings = {"provider": "local"}
 
-    # Step 4: API keys
-    console.print("\n[bold]Step 4/12: API Keys (Optional)[/bold]")
-    if Confirm.ask("Configure API keys?", default=False):
-        api_keys = await prompt_api_keys()
-    else:
-        api_keys = {"perplexity": "", "nia": "", "braintrust": ""}
-
-    # Step 5: Generate .env
-    console.print("\n[bold]Step 5/12: Generating configuration...[/bold]")
-    config = {"database": db_config, "embeddings": embeddings, "api_keys": api_keys}
+    # Step 4: Generate .env
+    console.print("\n[bold]Step 4/9: Generating configuration...[/bold]")
+    config = {"database": db_config, "embeddings": embeddings}
     env_path = Path.cwd() / ".env"
     generate_env_file(config, env_path)
     console.print(f"  [green]OK[/green] Generated {env_path}")
 
     # Step 6: Database Setup (migrations)
-    console.print("\n[bold]Step 6/12: Database Setup[/bold]")
+    console.print("\n[bold]Step 5/9: Database Setup[/bold]")
     if db_mode == "embedded":
         console.print("  Running migrations on embedded PostgreSQL...")
         try:
@@ -629,7 +589,7 @@ async def run_setup_wizard() -> None:
         console.print("  [dim]SQLite mode - no migrations needed[/dim]")
 
     # Step 7: Claude Code Integration
-    console.print("\n[bold]Step 7/12: Claude Code Integration[/bold]")
+    console.print("\n[bold]Step 6/9: Claude Code Integration[/bold]")
     from scripts.setup.claude_integration import (
         analyze_conflicts,
         backup_claude_dir,
@@ -797,71 +757,12 @@ async def run_setup_wizard() -> None:
         else:
             console.print("  Skipped integration installation")
 
-    # Note: Environment variables are set in Step 13 when scripts are installed
+    # Note: Environment variables are set in the final step when scripts are installed
     # to ~/.claude/claude2000/. This ensures CLAUDE_2000_DIR and CLAUDE_OPC_DIR
     # point to the installed location, not the repo.
 
-    # Step 8: Math Features (Optional)
-    console.print("\n[bold]Step 8/12: Math Features (Optional)[/bold]")
-    console.print("  Math features include:")
-    console.print("    - SymPy: symbolic algebra, calculus, equation solving")
-    console.print("    - Z3: SMT solver for constraint satisfaction & proofs")
-    console.print("    - Pint: unit-aware computation (meters to feet, etc.)")
-    console.print("    - SciPy/NumPy: scientific computing")
-    console.print("    - Lean 4: theorem proving (requires separate Lean install)")
-    console.print("")
-    console.print("  [dim]Note: Z3 downloads a ~35MB binary. All packages have[/dim]")
-    console.print("  [dim]pre-built wheels for Windows, macOS, and Linux.[/dim]")
-
-    if Confirm.ask("\nInstall math features?", default=False):
-        console.print("  Installing math dependencies...")
-        import subprocess
-
-        try:
-            result = subprocess.run(
-                ["uv", "sync", "--extra", "math"],
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5 min timeout for large downloads
-            )
-            if result.returncode == 0:
-                console.print("  [green]OK[/green] Math packages installed")
-
-                # Verify imports work
-                console.print("  Verifying installation...")
-                verify_result = subprocess.run(
-                    [
-                        "uv",
-                        "run",
-                        "python",
-                        "-c",
-                        "import sympy; import z3; import pint; print('OK')",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-                if verify_result.returncode == 0 and "OK" in verify_result.stdout:
-                    console.print("  [green]OK[/green] All math imports verified")
-                else:
-                    console.print("  [yellow]WARN[/yellow] Some imports may have issues")
-                    console.print(f"       {verify_result.stderr[:200]}")
-            else:
-                console.print("  [red]ERROR[/red] Installation failed")
-                console.print(f"       {result.stderr[:200]}")
-                console.print("  You can install manually with: uv sync --extra math")
-        except subprocess.TimeoutExpired:
-            console.print("  [yellow]WARN[/yellow] Installation timed out")
-            console.print("  You can install manually with: uv sync --extra math")
-        except Exception as e:
-            console.print(f"  [red]ERROR[/red] {e}")
-            console.print("  You can install manually with: uv sync --extra math")
-    else:
-        console.print("  Skipped math features")
-        console.print("  [dim]Install later with: uv sync --extra math[/dim]")
-
-    # Step 9: TLDR Code Analysis Tool
-    console.print("\n[bold]Step 9/12: TLDR Code Analysis Tool[/bold]")
+    # Step 8: TLDR Code Analysis Tool
+    console.print("\n[bold]Step 7/9: TLDR Code Analysis Tool[/bold]")
     console.print("  TLDR provides token-efficient code analysis for LLMs:")
     console.print("    - 95% token savings vs reading raw files")
     console.print("    - 155x faster queries with daemon mode")
@@ -969,7 +870,7 @@ async def run_setup_wizard() -> None:
                         # Offer to pre-download embedding model
                         # Note: We only download the model here, not index any directory.
                         # Indexing happens per-project when user runs `tldr semantic index .`
-                        if Confirm.ask("\n  Pre-download embedding model now?", default=False):
+                        if Confirm.ask("\n  Pre-download embedding model now?", default=True):
                             console.print(f"  Downloading {model} embedding model...")
                             try:
                                 # Just load the model to trigger download (no indexing)
@@ -1012,7 +913,7 @@ async def run_setup_wizard() -> None:
         console.print("  [dim]Install later with: uv tool install llm-tldr[/dim]")
 
     # Step 10: Diagnostics Tools (Shift-Left Feedback)
-    console.print("\n[bold]Step 10/12: Diagnostics Tools (Shift-Left Feedback)[/bold]")
+    console.print("\n[bold]Step 8/9: Diagnostics Tools (Shift-Left Feedback)[/bold]")
     console.print("  Claude gets immediate type/lint feedback after editing files.")
     console.print("  This catches errors before tests run (shift-left).")
     console.print("")
@@ -1049,150 +950,8 @@ async def run_setup_wizard() -> None:
     console.print("  [dim]Note: Currently only Python diagnostics are wired up.[/dim]")
     console.print("  [dim]TypeScript, Go, Rust coming soon.[/dim]")
 
-    # Step 11/12: Loogle (Lean 4 type search for /prove skill)
-    console.print("\n[bold]Step 11/12: Loogle (Lean 4 Type Search)[/bold]")
-    console.print("  Loogle enables type-aware search of Mathlib theorems:")
-    console.print("    - Used by /prove skill for theorem proving")
-    console.print("    - Search by type signature (e.g., 'Nontrivial _ ↔ _')")
-    console.print("    - Find lemmas by shape, not just name")
-    console.print("")
-    console.print("  [dim]Note: Requires Lean 4 (elan) and ~2GB for Mathlib index.[/dim]")
-
-    if Confirm.ask("\nInstall Loogle for theorem proving?", default=False):
-        # os and subprocess are already imported at module level
-
-        # Check elan prerequisite
-        if not shutil.which("elan"):
-            console.print("  [yellow]WARN[/yellow] Lean 4 (elan) not installed")
-            console.print("  Install with: curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh")
-            console.print("  Then re-run the wizard to install Loogle.")
-        else:
-            console.print("  [green]OK[/green] elan found")
-
-            # Determine platform-appropriate install location
-            if sys.platform == "win32":
-                loogle_home = Path(os.environ.get("LOCALAPPDATA", "")) / "loogle"
-                bin_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "bin"
-            else:
-                loogle_home = Path.home() / ".local" / "share" / "loogle"
-                bin_dir = Path.home() / ".local" / "bin"
-
-            # Clone or update Loogle
-            if loogle_home.exists():
-                console.print(f"  [dim]Loogle already exists at {loogle_home}[/dim]")
-                if Confirm.ask("  Update existing installation?", default=True):
-                    console.print("  Updating Loogle...")
-                    result = subprocess.run(
-                        ["git", "pull"],
-                        cwd=loogle_home,
-                        capture_output=True,
-                        text=True,
-                        timeout=60,
-                    )
-                    if result.returncode == 0:
-                        console.print("  [green]OK[/green] Updated")
-                    else:
-                        console.print(f"  [yellow]WARN[/yellow] Update failed: {result.stderr[:100]}")
-            else:
-                console.print(f"  Cloning Loogle to {loogle_home}...")
-                loogle_home.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    result = subprocess.run(
-                        ["git", "clone", "https://github.com/nomeata/loogle", str(loogle_home)],
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                    )
-                    if result.returncode == 0:
-                        console.print("  [green]OK[/green] Cloned")
-                    else:
-                        console.print(f"  [red]ERROR[/red] Clone failed: {result.stderr[:100]}")
-                except subprocess.TimeoutExpired:
-                    console.print("  [red]ERROR[/red] Clone timed out")
-                except Exception as e:
-                    console.print(f"  [red]ERROR[/red] {e}")
-
-            # Build Loogle (downloads Mathlib, takes time)
-            if loogle_home.exists():
-                console.print("  Building Loogle (downloads Mathlib ~2GB, may take 5-10 min)...")
-                console.print("  [dim]Go grab a coffee...[/dim]")
-                try:
-                    result = subprocess.run(
-                        ["lake", "build"],
-                        cwd=loogle_home,
-                        capture_output=True,
-                        text=True,
-                        timeout=1200,  # 20 min
-                    )
-                    if result.returncode == 0:
-                        console.print("  [green]OK[/green] Loogle built")
-                    else:
-                        console.print(f"  [red]ERROR[/red] Build failed")
-                        console.print(f"       {result.stderr[:200]}")
-                        console.print("  You can build manually: cd ~/.local/share/loogle && lake build")
-                except subprocess.TimeoutExpired:
-                    console.print("  [yellow]WARN[/yellow] Build timed out (this is normal for first build)")
-                    console.print("  Continue building manually: cd ~/.local/share/loogle && lake build")
-                except Exception as e:
-                    console.print(f"  [red]ERROR[/red] {e}")
-
-            # Set LOOGLE_HOME environment variable
-            console.print("  Setting LOOGLE_HOME environment variable...")
-            shell_config = None
-            shell = os.environ.get("SHELL", "")
-            if "zsh" in shell:
-                shell_config = Path.home() / ".zshrc"
-            elif "bash" in shell:
-                shell_config = Path.home() / ".bashrc"
-            elif sys.platform == "win32":
-                shell_config = None  # Windows uses different mechanism
-
-            if shell_config and shell_config.exists():
-                content = shell_config.read_text()
-                export_line = f'export LOOGLE_HOME="{loogle_home}"'
-                if "LOOGLE_HOME" not in content:
-                    with open(shell_config, "a") as f:
-                        f.write(f"\n# Loogle (Lean 4 type search)\n{export_line}\n")
-                    console.print(f"  [green]OK[/green] Added LOOGLE_HOME to {shell_config.name}")
-                else:
-                    console.print(f"  [dim]LOOGLE_HOME already in {shell_config.name}[/dim]")
-            elif sys.platform == "win32":
-                console.print(f"  [yellow]NOTE[/yellow] Add to your environment:")
-                console.print(f"       set LOOGLE_HOME={loogle_home}")
-            else:
-                console.print(f"  [yellow]NOTE[/yellow] Add to your shell config:")
-                console.print(f'       export LOOGLE_HOME="{loogle_home}"')
-
-            # Install loogle-search script
-            console.print("  Installing loogle-search CLI...")
-            bin_dir.mkdir(parents=True, exist_ok=True)
-            src_script = Path.cwd() / "opc" / "scripts" / "loogle_search.py"
-            dst_script = bin_dir / "loogle-search"
-
-            if src_script.exists():
-                shutil.copy(src_script, dst_script)
-                dst_script.chmod(0o755)
-                console.print(f"  [green]OK[/green] Installed to {dst_script}")
-
-                # Also copy server script
-                src_server = Path.cwd() / "opc" / "scripts" / "loogle_server.py"
-                if src_server.exists():
-                    dst_server = bin_dir / "loogle-server"
-                    shutil.copy(src_server, dst_server)
-                    dst_server.chmod(0o755)
-                    console.print(f"  [green]OK[/green] Installed loogle-server")
-            else:
-                console.print(f"  [yellow]WARN[/yellow] loogle_search.py not found at {src_script}")
-
-            console.print("")
-            console.print("  [dim]Usage: loogle-search \"Nontrivial _ ↔ _\"[/dim]")
-            console.print("  [dim]Or use /prove skill which calls it automatically[/dim]")
-    else:
-        console.print("  Skipped Loogle installation")
-        console.print("  [dim]Install later by re-running the wizard[/dim]")
-
-    # Step 12/12: Install scripts to ~/.claude/claude2000/
-    console.print("\n[bold]Step 12/12: Installing Claude2000 scripts...[/bold]")
+    # Step 9/9: Install scripts to ~/.claude/claude2000/
+    console.print("\n[bold]Step 9/9: Installing Claude2000 scripts...[/bold]")
     install_dir = Path.home() / ".claude" / "claude2000"
     scripts_source = Path(__file__).parent.parent  # opc/scripts/
     scripts_dest = install_dir / "scripts"
@@ -1252,13 +1011,12 @@ async def run_setup_wizard() -> None:
     # Done!
     console.print("\n" + "=" * 60)
     console.print("[bold green]Setup complete![/bold green]")
-    console.print("\nTLDR commands:")
-    console.print("  [bold]tldr tree .[/bold]       - See project structure")
-    console.print("  [bold]tldr daemon start[/bold] - Start daemon (155x faster)")
-    console.print("  [bold]tldr --help[/bold]       - See all commands")
     console.print("\nNext steps:")
-    console.print("  1. Start Claude Code: [bold]claude[/bold]")
-    console.print("  2. View docs: [bold]docs/QUICKSTART.md[/bold]")
+    console.print("  1. [bold]Restart your terminal[/bold] (to load CLAUDE_2000_DIR)")
+    console.print("  2. Start Claude Code: [bold]claude[/bold]")
+    console.print("")
+    console.print("[dim]Note: TLDR daemon starts automatically when Claude Code runs.[/dim]")
+    console.print("[dim]View docs: docs/QUICKSTART.md[/dim]")
 
 
 async def run_uninstall_wizard() -> None:

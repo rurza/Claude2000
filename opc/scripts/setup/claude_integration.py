@@ -466,6 +466,41 @@ def install_opc_integration(
     }
 
     try:
+        # For fresh install (not merging), clear target directory first
+        if not merge_user_items and target_dir.exists():
+            import tempfile
+
+            # Preserve certain user files/dirs to a temp location
+            preserve_files = ["history.jsonl", "mcp_config.json", "projects.json"]
+            preserve_dirs = ["file-history", "projects", "cache"]
+
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+
+                # Copy preserved items to temp
+                for f in preserve_files:
+                    src = target_dir / f
+                    if src.exists():
+                        shutil.copy2(src, tmp_path / f)
+                for d in preserve_dirs:
+                    src = target_dir / d
+                    if src.exists() and src.is_dir():
+                        shutil.copytree(src, tmp_path / d)
+
+                # Remove everything
+                shutil.rmtree(target_dir)
+                target_dir.mkdir(parents=True, exist_ok=True)
+
+                # Restore preserved items from temp
+                for f in preserve_files:
+                    src = tmp_path / f
+                    if src.exists():
+                        shutil.copy2(src, target_dir / f)
+                for d in preserve_dirs:
+                    src = tmp_path / d
+                    if src.exists():
+                        shutil.copytree(src, target_dir / d)
+
         # Ensure target exists
         target_dir.mkdir(parents=True, exist_ok=True)
 

@@ -107,9 +107,7 @@ Options:
 After the user responds, mark the outcome:
 ```bash
 # Mark the most recent handoff (works with PostgreSQL or SQLite)
-# Use git root to find project, then opc/scripts/core/
-PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJECT_DIR:-.}")
-cd "$PROJECT_ROOT/opc" && uv run python scripts/core/artifact_mark.py --latest --outcome <USER_CHOICE>
+cd "$CLAUDE_OPC_DIR" && uv run python scripts/core/artifact_mark.py --latest --outcome <USER_CHOICE>
 ```
 
 This command auto-detects the database (PostgreSQL if configured, SQLite fallback).

@@ -52,7 +52,7 @@ Claude Code has a **compaction problem**: when context fills up, the system comp
 
 ### Why "2000"?
 
-**Claude2000** is a fork of [Continuous Claude](https://github.com/anthropics/continuous-claude) with additional features and improvements. The name is inspired by the Nimbus 2000 from Harry Potter—a top-of-the-line broomstick that elevated Quidditch to new heights. Similarly, Claude2000 elevates Claude Code into a continuously learning, multi-agent system. Each session makes the system smarter—learnings accumulate like compound interest.
+**Claude2000** is a fork of [Continuous Claude](https://github.com/anthropics/Claude2000) with additional features and improvements. The name is inspired by the Nimbus 2000 from Harry Potter—a top-of-the-line broomstick that elevated Quidditch to new heights. Similarly, Claude2000 elevates Claude Code into a continuously learning, multi-agent system. Each session makes the system smarter—learnings accumulate like compound interest.
 
 ---
 
@@ -160,77 +160,33 @@ ACTION: Use Skill tool BEFORE responding
 
 - Python 3.11+
 - [uv](https://github.com/astral-sh/uv) package manager
-- Docker (for PostgreSQL)
 - Claude Code CLI
 
 ### Installation
 
 ```bash
 # Clone
-git clone https://github.com/parcadei/Continuous-Claude-v3.git
-cd Continuous-Claude-v3/opc
+git clone https://github.com/rurza/Claude2000.git
+cd Claude2000
 
-# Run setup wizard (12 steps)
-uv run python -m scripts.setup.wizard
+# Run the installer
+uv run python install.py
 ```
 
-> **Note:** The `pyproject.toml` is in `opc/`. Always run `uv` commands from the `opc/` directory.
-
-### What the Wizard Does
+### What the Wizard Does (9 steps)
 
 | Step | What It Does |
 |------|--------------|
-| 1 | Backup existing .claude/ config (if present) |
-| 2 | Check prerequisites (Docker, Python, uv) |
-| 3-5 | Database + API key configuration |
-| 6-7 | Start Docker stack, run migrations |
-| 8 | Install Claude Code integration (32 agents, 109 skills, 30 hooks) |
-| 9 | Math features (SymPy, Z3, Pint - optional) |
-| 10 | TLDR code analysis tool |
-| 11-12 | Diagnostics tools + Loogle (optional) |
-
-### Remote Database Setup
-
-By default, CC-v3 runs PostgreSQL locally via Docker. For remote database setups:
-
-#### 1. Database Preparation
-
-```bash
-# Connect to your remote PostgreSQL instance
-psql -h hostname -U user -d continuous_claude
-
-# Enable pgvector extension (requires superuser or rds_superuser)
-CREATE EXTENSION IF NOT EXISTS vector;
-
-# Apply the schema (from your local clone)
-psql -h hostname -U user -d continuous_claude -f docker/init-schema.sql
-```
-
-> **Managed PostgreSQL tips:**
-> - **AWS RDS**: Add `vector` to `shared_preload_libraries` in DB Parameter Group
-> - **Supabase**: Enable via Database Extensions page
-> - **Azure Database**: Use Extensions pane to enable pgvector
-
-#### 2. Connection Configuration
-
-Set `CONTINUOUS_CLAUDE_DB_URL` in `~/.claude/settings.json`:
-
-```json
-{
-  "env": {
-    "CONTINUOUS_CLAUDE_DB_URL": "postgresql://user:password@hostname:5432/continuous_claude"
-  }
-}
-```
-
-Or export before running Claude:
-
-```bash
-export CONTINUOUS_CLAUDE_DB_URL="postgresql://user:password@hostname:5432/continuous_claude"
-claude
-```
-
-See `.env.example` for all available environment variables.
+| 0 | Backup existing .claude/ config (if present) |
+| 1 | Check prerequisites (Python, uv) |
+| 2 | Database configuration (embedded recommended) |
+| 3 | Embedding configuration (local or ollama) |
+| 4 | Generate configuration |
+| 5 | Database setup (migrations) |
+| 6 | Install Claude Code integration (32 agents, 109 skills, 30 hooks) |
+| 7 | TLDR code analysis tool |
+| 8 | Diagnostics tools |
+| 9 | Install scripts to ~/.claude/claude2000/ |
 
 ### First Session
 
@@ -749,7 +705,7 @@ cd opc && python3 scripts/disable_tldr_hooks.py
 
 ### Memory System
 
-Cross-session learning powered by PostgreSQL + pgvector.
+Cross-session learning with semantic search.
 
 #### How It Works
 
@@ -770,15 +726,6 @@ The key insight: **thinking blocks contain the real reasoning**—not just what 
 | "Remember that auth uses JWT" | Stores learning with context |
 | "Recall authentication patterns" | Searches memory, surfaces matches |
 | "What did we decide about X?" | Implicit recall via memory-awareness hook |
-
-#### Database Schema (4 tables)
-
-| Table | Purpose |
-|-------|---------|
-| **sessions** | Cross-terminal awareness |
-| **file_claims** | Cross-terminal file locking |
-| **archival_memory** | Long-term learnings with BGE embeddings |
-| **handoffs** | Session handoffs with embeddings |
 
 #### Recall Commands
 
@@ -999,11 +946,11 @@ Blocks on HIGH severity until user accepts/mitigates risks.
 
 ```bash
 # Clone
-git clone https://github.com/parcadei/continuous-claude.git
-cd continuous-claude/opc
+git clone https://github.com/rurza/Claude2000.git
+cd Claude2000
 
-# Run the setup wizard
-uv run python -m scripts.setup.wizard
+# Run the installer
+uv run python install.py
 ```
 
 The wizard walks you through all configuration options interactively.
@@ -1013,8 +960,8 @@ The wizard walks you through all configuration options interactively.
 Pull latest changes and sync your installation:
 
 ```bash
-cd continuous-claude/opc
-uv run python -m scripts.setup.update
+cd Claude2000
+uv run python update.py
 ```
 
 This will:
@@ -1031,8 +978,7 @@ This will:
 | Skills (109) | ~/.claude/skills/ |
 | Hooks (30) | ~/.claude/hooks/ |
 | Rules | ~/.claude/rules/ |
-| Scripts | ~/.claude/scripts/ |
-| PostgreSQL | Docker container |
+| Scripts | ~/.claude/claude2000/ |
 
 ### Installation Mode: Copy vs Symlink
 
@@ -1045,10 +991,10 @@ The wizard offers two installation modes:
 
 #### Copy Mode (Default)
 
-Files are copied from `continuous-claude/.claude/` to `~/.claude/`. Changes you make in `~/.claude/` are **local only** and will be overwritten on next update.
+Files are copied from `Claude2000/.claude/` to `~/.claude/`. Changes you make in `~/.claude/` are **local only** and will be overwritten on next update.
 
 ```text
-continuous-claude/.claude/  ──COPY──>  ~/.claude/
+Claude2000/.claude/  ──COPY──>  ~/.claude/
      (source)                          (user config)
 ```
 
@@ -1060,10 +1006,10 @@ continuous-claude/.claude/  ──COPY──>  ~/.claude/
 Creates symlinks so `~/.claude/` points directly to repo files. Changes in either location affect the same files.
 
 ```text
-~/.claude/rules  ──SYMLINK──>  continuous-claude/.claude/rules
-~/.claude/skills ──SYMLINK──>  continuous-claude/.claude/skills
-~/.claude/hooks  ──SYMLINK──>  continuous-claude/.claude/hooks
-~/.claude/agents ──SYMLINK──>  continuous-claude/.claude/agents
+~/.claude/rules  ──SYMLINK──>  Claude2000/.claude/rules
+~/.claude/skills ──SYMLINK──>  Claude2000/.claude/skills
+~/.claude/hooks  ──SYMLINK──>  Claude2000/.claude/hooks
+~/.claude/agents ──SYMLINK──>  Claude2000/.claude/agents
 ```
 
 **Pros:**
@@ -1091,7 +1037,7 @@ ls -la ~/.claude/backups/$(date +%Y%m%d)/
 rm -rf ~/.claude/{rules,skills,hooks,agents}
 
 # Create symlinks (adjust path to your repo location)
-REPO="$HOME/continuous-claude"  # or wherever you cloned
+REPO="$HOME/Claude2000"  # or wherever you cloned
 ln -s "$REPO/.claude/rules" ~/.claude/rules
 ln -s "$REPO/.claude/skills" ~/.claude/skills
 ln -s "$REPO/.claude/hooks" ~/.claude/hooks
@@ -1119,7 +1065,7 @@ Get-ChildItem $BackupDir
 Remove-Item -Recurse "$HOME\.claude\rules","$HOME\.claude\skills","$HOME\.claude\hooks","$HOME\.claude\agents"
 
 # Create symlinks (adjust path to your repo location)
-$REPO = "$HOME\continuous-claude"  # or wherever you cloned
+$REPO = "$HOME\Claude2000"  # or wherever you cloned
 New-Item -ItemType SymbolicLink -Path "$HOME\.claude\rules" -Target "$REPO\.claude\rules"
 New-Item -ItemType SymbolicLink -Path "$HOME\.claude\skills" -Target "$REPO\.claude\skills"
 New-Item -ItemType SymbolicLink -Path "$HOME\.claude\hooks" -Target "$REPO\.claude\hooks"
@@ -1177,16 +1123,17 @@ Skill activation triggers.
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
+| `CLAUDE_2000_DIR` | Path to ~/.claude/claude2000 (set by wizard) | Auto |
+| `CLAUDE_OPC_DIR` | Alias for backwards compatibility | Auto |
+| `CLAUDE_PROJECT_DIR` | Current project directory (set by SessionStart hook) | Auto |
 | `BRAINTRUST_API_KEY` | Session tracing | No |
 | `PERPLEXITY_API_KEY` | Web search | No |
 | `NIA_API_KEY` | Documentation search | No |
-| `CLAUDE_OPC_DIR` | Path to CC's opc/ directory (set by wizard) | Auto |
-| `CLAUDE_PROJECT_DIR` | Current project directory (set by SessionStart hook) | Auto |
 
-Services without API keys still work:
+All core features work without API keys:
 - Continuity system (ledgers, handoffs)
 - TLDR code analysis
+- Memory system
 - Local git operations
 - TDD workflow
 
@@ -1195,7 +1142,7 @@ Services without API keys still work:
 ## Directory Structure
 
 ```
-continuous-claude/
+Claude2000/
 ├── .claude/
 │   ├── agents/           # 32 specialized AI agents
 │   ├── hooks/            # 30 lifecycle hooks
@@ -1203,16 +1150,13 @@ continuous-claude/
 │   │   └── dist/         # Compiled JavaScript
 │   ├── skills/           # 109 modular capabilities
 │   ├── rules/            # System policies
-│   ├── scripts/          # Python utilities
 │   └── settings.json     # Hook configuration
 ├── opc/
 │   ├── packages/
 │   │   └── tldr-code/    # 5-layer code analysis
-│   ├── scripts/
-│   │   ├── setup/        # Wizard, Docker, integration
-│   │   └── core/         # recall_learnings, store_learning
-│   └── docker/
-│       └── init-schema.sql  # 4-table PostgreSQL schema
+│   └── scripts/
+│       ├── setup/        # Wizard, integration
+│       └── core/         # recall_learnings, store_learning
 ├── thoughts/
 │   ├── ledgers/          # Continuity ledgers (CONTINUITY_*.md)
 │   └── shared/
