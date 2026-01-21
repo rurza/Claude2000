@@ -1,4 +1,4 @@
-# Continuous Claude
+# Claude2000
 
 > A persistent, learning, multi-agent development environment built on Claude Code
 
@@ -8,11 +8,11 @@
 [![Agents](https://img.shields.io/badge/Agents-32-purple.svg)](#agents-system)
 [![Hooks](https://img.shields.io/badge/Hooks-30-blue.svg)](#hooks-system)
 
-**Continuous Claude** transforms Claude Code into a continuously learning system that maintains context across sessions, orchestrates specialized agents, and eliminates wasting tokens through intelligent code analysis.
+**Claude2000** transforms Claude Code into a continuously learning system that maintains context across sessions, orchestrates specialized agents, and eliminates wasting tokens through intelligent code analysis.
 
 ## Table of Contents
 
-- [Why Continuous Claude?](#why-continuous-claude)
+- [Why Claude2000?](#why-claude2000)
 - [Design Principles](#design-principles)
 - [How to Talk to Claude](#how-to-talk-to-claude)
 - [Quick Start](#quick-start)
@@ -34,11 +34,11 @@
 
 ---
 
-## Why Continuous Claude?
+## Why Claude2000?
 
 Claude Code has a **compaction problem**: when context fills up, the system compacts your conversation, losing nuanced understanding and decisions made during the session.
 
-**Continuous Claude solves this with:**
+**Claude2000 solves this with:**
 
 | Problem | Solution |
 |---------|----------|
@@ -50,9 +50,9 @@ Claude Code has a **compaction problem**: when context fills up, the system comp
 
 **The mantra: Compound, don't compact.** Extract learnings automatically, then start fresh with full context.
 
-### Why "Continuous"? Why "Compounding"?
+### Why "2000"?
 
-The name is a pun. **Continuous** because Claude maintains state across sessions. **Compounding** because each session makes the system smarter—learnings accumulate like compound interest.
+**Claude2000** is a fork of [Continuous Claude](https://github.com/anthropics/continuous-claude) with additional features and improvements. The name is inspired by the Nimbus 2000 from Harry Potter—a top-of-the-line broomstick that elevated Quidditch to new heights. Similarly, Claude2000 elevates Claude Code into a continuously learning, multi-agent system. Each session makes the system smarter—learnings accumulate like compound interest.
 
 ---
 
@@ -1269,4 +1269,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
 
 ---
 
-**Continuous Claude**: Not just a coding assistant—a persistent, learning, multi-agent development environment that gets smarter with every session.
+**Claude2000**: Not just a coding assistant—a persistent, learning, multi-agent development environment that gets smarter with every session.

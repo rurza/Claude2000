@@ -1,4 +1,4 @@
-# Contributing to Continuous Claude
+# Contributing to Claude2000
 
 Thank you for your interest in contributing! This guide covers how to add skills, agents, hooks, and extend TLDR.
 
@@ -118,7 +118,7 @@ tools: <list tools agent needs (optional): Read | Grep | Glob | etc...>
 ## Prompt
 
 <system>
-You are the agent-name agent for Continuous Claude.
+You are the agent-name agent for Claude2000.
 
 Your job is to:
 1. Specific task
