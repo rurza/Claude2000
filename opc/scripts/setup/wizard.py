@@ -44,6 +44,29 @@ except ImportError:
         def print(self, *args, **kwargs):
             print(*args)
 
+    class Panel:
+        @staticmethod
+        def fit(text, **kwargs):
+            return text
+
+    class Confirm:
+        @staticmethod
+        def ask(prompt, default=False):
+            response = input(f"{prompt} [{'Y/n' if default else 'y/N'}]: ").strip().lower()
+            if not response:
+                return default
+            return response in ('y', 'yes')
+
+    class Prompt:
+        @staticmethod
+        def ask(prompt, choices=None, default=None, password=False):
+            if choices:
+                prompt = f"{prompt} ({'/'.join(choices)})"
+            if default:
+                prompt = f"{prompt} [{default}]"
+            response = input(f"{prompt}: ").strip()
+            return response if response else default
+
     console = Console()
 
 
@@ -187,49 +210,18 @@ async def check_prerequisites_with_install_offers() -> dict[str, Any]:
         "elan": shutil.which("elan") is not None,  # Lean4 version manager
     }
 
-    # Check for Docker or Podman
-    runtime_info = await check_container_runtime()
-    result["docker"] = runtime_info["installed"] and runtime_info.get("daemon_running", False)
-    result["container_runtime"] = runtime_info.get("runtime") if runtime_info["installed"] else None
-    result["docker_version"] = runtime_info.get("version")
-    result["docker_daemon_running"] = runtime_info.get("daemon_running", False)
-
-    runtime_name = runtime_info.get("runtime", "Docker")
-
-    # Offer install if missing
-    if not runtime_info["installed"]:
-        await offer_docker_install()
-    elif not runtime_info.get("daemon_running", False):
-        console.print(f"  [yellow]{runtime_name.title()} is installed but the daemon is not running.[/yellow]")
-        if runtime_name == "docker":
-            console.print("  Please start Docker Desktop or the Docker service.")
-        else:
-            console.print("  Please start the Podman service: systemctl --user start podman.socket")
-
-        # Retry loop for daemon startup
-        max_retries = 3
-        for attempt in range(max_retries):
-            if Confirm.ask(f"\n  Retry checking {runtime_name} daemon? (attempt {attempt + 1}/{max_retries})", default=True):
-                console.print(f"  Checking {runtime_name} daemon...")
-                await asyncio.sleep(2)  # Give daemon time to start
-                runtime_info = await check_runtime_installed(runtime_name)
-                if runtime_info.get("daemon_running", False):
-                    result["docker"] = True
-                    result["docker_daemon_running"] = True
-                    console.print(f"  [green]OK[/green] {runtime_name.title()} daemon is now running!")
-                    break
-                else:
-                    console.print(f"  [yellow]{runtime_name.title()} daemon still not running.[/yellow]")
-            else:
-                break
+    # Docker/Podman is now optional (only needed if using docker database mode)
+    # Skip the Docker check entirely since we default to embedded postgres
+    result["docker"] = False
+    result["container_runtime"] = None
 
     # Check elan/Lean4 (optional, for theorem proving with /prove skill)
     if not result["elan"]:
         console.print("\n  [dim]Optional: Lean4/elan not found (needed for /prove skill)[/dim]")
         console.print("  [dim]Install with: curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh[/dim]")
 
-    # elan is optional, so exclude from all_present check
-    result["all_present"] = all([result["docker"], result["python"], result["uv"]])
+    # Docker and elan are optional, so exclude from all_present check
+    result["all_present"] = all([result["python"], result["uv"]])
     return result
 
 
@@ -523,7 +515,7 @@ async def run_setup_wizard() -> None:
     )
 
     # Step 0: Backup global ~/.claude (safety first)
-    console.print("\n[bold]Step 0/13: Backing up global Claude configuration...[/bold]")
+    console.print("\n[bold]Step 0/12: Backing up global Claude configuration...[/bold]")
     from scripts.setup.claude_integration import (
         backup_global_claude_dir,
         get_global_claude_dir,
@@ -540,13 +532,8 @@ async def run_setup_wizard() -> None:
         console.print("  [dim]No existing ~/.claude found (clean install)[/dim]")
 
     # Step 1: Check prerequisites (with installation offers)
-    console.print("\n[bold]Step 1/13: Checking system requirements...[/bold]")
+    console.print("\n[bold]Step 1/12: Checking system requirements...[/bold]")
     prereqs = await check_prerequisites_with_install_offers()
-
-    if prereqs["docker"]:
-        runtime = prereqs.get("container_runtime", "docker")
-        console.print(f"  [green]OK[/green] {runtime.title()}")
-    # Installation guidance already shown by check_prerequisites_with_install_offers()
 
     if prereqs["python"]:
         console.print("  [green]OK[/green] Python 3.11+")
@@ -565,12 +552,11 @@ async def run_setup_wizard() -> None:
         sys.exit(1)
 
     # Step 2: Database config
-    console.print("\n[bold]Step 2/13: Database Configuration[/bold]")
+    console.print("\n[bold]Step 2/12: Database Configuration[/bold]")
     console.print("  Choose your database backend:")
-    console.print("    [bold]embedded[/bold]  - Embedded PostgreSQL (recommended, no Docker)")
-    console.print("    [bold]docker[/bold]    - PostgreSQL in Docker (if you prefer containers)")
+    console.print("    [bold]embedded[/bold]  - Embedded PostgreSQL (recommended)")
     console.print("    [bold]sqlite[/bold]    - SQLite fallback (simplest, limited features)")
-    db_mode = Prompt.ask("\n  Database mode", choices=["embedded", "docker", "sqlite"], default="embedded")
+    db_mode = Prompt.ask("\n  Database mode", choices=["embedded", "sqlite"], default="embedded")
 
     if db_mode == "embedded":
         from scripts.setup.embedded_postgres import setup_embedded_environment
@@ -581,14 +567,15 @@ async def run_setup_wizard() -> None:
             db_config = {"mode": "embedded", "pgdata": str(embed_result["pgdata"]), "venv": str(embed_result["venv"])}
         else:
             console.print(f"  [red]ERROR[/red] {embed_result.get('error', 'Unknown')}")
-            console.print("  Falling back to Docker mode")
-            db_mode = "docker"
+            console.print("  Falling back to SQLite mode")
+            db_mode = "sqlite"
+            db_config = {"mode": "sqlite"}
 
     if db_mode == "sqlite":
         db_config = {"mode": "sqlite"}
         console.print("  [yellow]Note:[/yellow] Cross-terminal coordination disabled in SQLite mode")
 
-    if db_mode == "docker":
+    if False:  # Docker option removed
         console.print("  [dim]Customize host/port for containers (podman, nerdctl) or remote postgres.[/dim]")
         if Confirm.ask("Configure database connection?", default=True):
             db_config = await prompt_database_config()
@@ -605,70 +592,44 @@ async def run_setup_wizard() -> None:
         db_config["mode"] = "docker"
 
     # Step 3: Embedding configuration
-    console.print("\n[bold]Step 3/13: Embedding Configuration[/bold]")
+    console.print("\n[bold]Step 3/12: Embedding Configuration[/bold]")
     if Confirm.ask("Configure embedding provider?", default=True):
         embeddings = await prompt_embedding_config()
     else:
         embeddings = {"provider": "local"}
 
     # Step 4: API keys
-    console.print("\n[bold]Step 4/13: API Keys (Optional)[/bold]")
+    console.print("\n[bold]Step 4/12: API Keys (Optional)[/bold]")
     if Confirm.ask("Configure API keys?", default=False):
         api_keys = await prompt_api_keys()
     else:
         api_keys = {"perplexity": "", "nia": "", "braintrust": ""}
 
     # Step 5: Generate .env
-    console.print("\n[bold]Step 5/13: Generating configuration...[/bold]")
+    console.print("\n[bold]Step 5/12: Generating configuration...[/bold]")
     config = {"database": db_config, "embeddings": embeddings, "api_keys": api_keys}
     env_path = Path.cwd() / ".env"
     generate_env_file(config, env_path)
     console.print(f"  [green]OK[/green] Generated {env_path}")
 
-    # Step 5: Container stack (Sandbox Infrastructure)
-    runtime = prereqs.get("container_runtime", "docker")
-    console.print(f"\n[bold]Step 6/13: Container Stack (Sandbox Infrastructure)[/bold]")
-    console.print("  The sandbox requires PostgreSQL and Redis for:")
-    console.print("  - Agent coordination and scheduling")
-    console.print("  - Build cache and LSP index storage")
-    console.print("  - Real-time agent status")
-    if Confirm.ask(f"Start {runtime} stack (PostgreSQL, Redis)?", default=True):
-        from scripts.setup.docker_setup import run_migrations, set_container_runtime, start_docker_stack, wait_for_services
-
-        # Set the detected runtime before starting
-        set_container_runtime(runtime)
-
-        console.print(f"  [dim]Starting containers (first run downloads ~500MB, may take a few minutes)...[/dim]")
-        result = await start_docker_stack(env_file=env_path)
-        if result["success"]:
-            console.print(f"  [green]OK[/green] {runtime.title()} stack started")
-
-            # Wait for services
-            console.print("  Waiting for services to be healthy...")
-            health = await wait_for_services(timeout=60)
-            if health["all_healthy"]:
-                console.print("  [green]OK[/green] All services healthy")
+    # Step 6: Database Setup (migrations)
+    console.print("\n[bold]Step 6/12: Database Setup[/bold]")
+    if db_mode == "embedded":
+        console.print("  Running migrations on embedded PostgreSQL...")
+        try:
+            from scripts.setup.embedded_postgres import run_migrations_direct
+            result = await run_migrations_direct(db_config.get("pgdata", ""))
+            if result["success"]:
+                console.print("  [green]OK[/green] Migrations complete")
             else:
-                console.print("  [yellow]WARN[/yellow] Some services may not be healthy")
-        else:
-            console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
-            console.print(f"  You can start manually with: {runtime} compose up -d")
-
-    # Step 6: Migrations
-    console.print("\n[bold]Step 7/13: Database Setup[/bold]")
-    if Confirm.ask("Run database migrations?", default=True):
-        from scripts.setup.docker_setup import run_migrations, set_container_runtime
-
-        # Ensure runtime is set (in case step 5 was skipped)
-        set_container_runtime(runtime)
-        result = await run_migrations()
-        if result["success"]:
-            console.print("  [green]OK[/green] Migrations complete")
-        else:
-            console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
+                console.print(f"  [yellow]WARN[/yellow] {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            console.print(f"  [yellow]WARN[/yellow] Could not run migrations: {e}")
+    elif db_mode == "sqlite":
+        console.print("  [dim]SQLite mode - no migrations needed[/dim]")
 
     # Step 7: Claude Code Integration
-    console.print("\n[bold]Step 8/13: Claude Code Integration[/bold]")
+    console.print("\n[bold]Step 7/12: Claude Code Integration[/bold]")
     from scripts.setup.claude_integration import (
         analyze_conflicts,
         backup_claude_dir,
@@ -841,7 +802,7 @@ async def run_setup_wizard() -> None:
     # point to the installed location, not the repo.
 
     # Step 8: Math Features (Optional)
-    console.print("\n[bold]Step 9/13: Math Features (Optional)[/bold]")
+    console.print("\n[bold]Step 8/12: Math Features (Optional)[/bold]")
     console.print("  Math features include:")
     console.print("    - SymPy: symbolic algebra, calculus, equation solving")
     console.print("    - Z3: SMT solver for constraint satisfaction & proofs")
@@ -900,7 +861,7 @@ async def run_setup_wizard() -> None:
         console.print("  [dim]Install later with: uv sync --extra math[/dim]")
 
     # Step 9: TLDR Code Analysis Tool
-    console.print("\n[bold]Step 10/13: TLDR Code Analysis Tool[/bold]")
+    console.print("\n[bold]Step 9/12: TLDR Code Analysis Tool[/bold]")
     console.print("  TLDR provides token-efficient code analysis for LLMs:")
     console.print("    - 95% token savings vs reading raw files")
     console.print("    - 155x faster queries with daemon mode")
@@ -1051,7 +1012,7 @@ async def run_setup_wizard() -> None:
         console.print("  [dim]Install later with: uv tool install llm-tldr[/dim]")
 
     # Step 10: Diagnostics Tools (Shift-Left Feedback)
-    console.print("\n[bold]Step 11/13: Diagnostics Tools (Shift-Left Feedback)[/bold]")
+    console.print("\n[bold]Step 10/12: Diagnostics Tools (Shift-Left Feedback)[/bold]")
     console.print("  Claude gets immediate type/lint feedback after editing files.")
     console.print("  This catches errors before tests run (shift-left).")
     console.print("")
@@ -1088,8 +1049,8 @@ async def run_setup_wizard() -> None:
     console.print("  [dim]Note: Currently only Python diagnostics are wired up.[/dim]")
     console.print("  [dim]TypeScript, Go, Rust coming soon.[/dim]")
 
-    # Step 11: Loogle (Lean 4 type search for /prove skill)
-    console.print("\n[bold]Step 12/13: Loogle (Lean 4 Type Search)[/bold]")
+    # Step 11/12: Loogle (Lean 4 type search for /prove skill)
+    console.print("\n[bold]Step 11/12: Loogle (Lean 4 Type Search)[/bold]")
     console.print("  Loogle enables type-aware search of Mathlib theorems:")
     console.print("    - Used by /prove skill for theorem proving")
     console.print("    - Search by type signature (e.g., 'Nontrivial _ ↔ _')")
@@ -1230,8 +1191,8 @@ async def run_setup_wizard() -> None:
         console.print("  Skipped Loogle installation")
         console.print("  [dim]Install later by re-running the wizard[/dim]")
 
-    # Step 13/13: Install scripts to ~/.claude/claude2000/
-    console.print("\n[bold]Step 13/13: Installing Claude2000 scripts...[/bold]")
+    # Step 12/12: Install scripts to ~/.claude/claude2000/
+    console.print("\n[bold]Step 12/12: Installing Claude2000 scripts...[/bold]")
     install_dir = Path.home() / ".claude" / "claude2000"
     scripts_source = Path(__file__).parent.parent  # opc/scripts/
     scripts_dest = install_dir / "scripts"
