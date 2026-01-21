@@ -20,12 +20,15 @@ Examples:
 
 import argparse
 import hashlib
+import itertools
 import json
 import os
 import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+
+import yaml
 
 # Load .env files for DATABASE_URL (cross-platform)
 try:
@@ -438,8 +441,112 @@ def normalize_outcome(status: str) -> str:
 # --- End helper functions ---
 
 
-def parse_handoff(file_path: Path) -> dict:
-    """Parse a handoff markdown file into structured data.
+def parse_yaml_handoff(file_path: Path, raw_content: str) -> dict:
+    """Parse a YAML handoff file into structured data.
+
+    YAML format fields:
+    - session: session name
+    - goal: what this session accomplished (→ task_summary)
+    - now: what next session should do
+    - done_this_session: list of {task, files}
+    - worked: list of what worked (→ what_worked)
+    - failed: list of what failed (→ what_failed)
+    - decisions: dict of decision:rationale (→ key_decisions)
+    - files: {created: [], modified: []} (→ files_modified)
+    """
+    # Parse YAML content (may have frontmatter or be pure YAML)
+    frontmatter, body = parse_frontmatter(raw_content)
+
+    # If frontmatter exists, merge with body YAML
+    if frontmatter:
+        data = frontmatter
+        # Parse remaining body as YAML if it exists
+        if body.strip():
+            try:
+                body_data = yaml.safe_load(body)
+                if isinstance(body_data, dict):
+                    data.update(body_data)
+            except yaml.YAMLError:
+                pass  # Body wasn't valid YAML, ignore
+    else:
+        # Pure YAML file without frontmatter
+        try:
+            data = yaml.safe_load(raw_content) or {}
+        except yaml.YAMLError:
+            data = {}
+
+    # Generate ID from file path
+    file_id = hashlib.md5(str(file_path).encode()).hexdigest()[:12]
+
+    # Use helper for session info extraction
+    session_name, session_uuid = extract_session_info(file_path)
+    # Override with YAML session field if present
+    if data.get("session"):
+        session_name = data["session"]
+
+    # Extract task number
+    task_match = re.search(r"task-(\d+)", file_path.stem)
+    task_number = int(task_match.group(1)) if task_match else None
+
+    # Normalize outcome
+    status = data.get("status", data.get("outcome", "UNKNOWN"))
+    outcome = normalize_outcome(status)
+
+    # Extract files from YAML structure
+    files_modified = []
+    if isinstance(data.get("files"), dict):
+        files_modified.extend(data["files"].get("created", []) or [])
+        files_modified.extend(data["files"].get("modified", []) or [])
+    # Also extract from done_this_session
+    for item in data.get("done_this_session", []) or []:
+        if isinstance(item, dict) and item.get("files"):
+            files_modified.extend(item["files"])
+
+    # Format what_worked from list
+    what_worked = data.get("worked", []) or []
+    if isinstance(what_worked, list):
+        what_worked = "\n".join(f"- {item}" for item in what_worked)
+
+    # Format what_failed from list
+    what_failed = data.get("failed", []) or []
+    if isinstance(what_failed, list):
+        what_failed = "\n".join(f"- {item}" for item in what_failed)
+
+    # Format decisions from dict
+    decisions = data.get("decisions", []) or []
+    if isinstance(decisions, list):
+        formatted = []
+        for d in decisions:
+            if isinstance(d, dict):
+                for k, v in d.items():
+                    formatted.append(f"- {k}: {v}")
+            else:
+                formatted.append(f"- {d}")
+        decisions = "\n".join(formatted)
+
+    return {
+        "id": file_id,
+        "session_name": session_name,
+        "session_uuid": session_uuid,
+        "task_number": task_number,
+        "file_path": str(file_path),
+        "task_summary": str(data.get("goal", ""))[:500],
+        "what_worked": what_worked,
+        "what_failed": what_failed,
+        "key_decisions": decisions,
+        "files_modified": json.dumps(files_modified),
+        "outcome": outcome,
+        # Braintrust trace links
+        "root_span_id": data.get("root_span_id", ""),
+        "turn_span_id": data.get("turn_span_id", ""),
+        "session_id": data.get("session_id", ""),
+        "braintrust_session_id": data.get("braintrust_session_id", ""),
+        "created_at": data.get("date", datetime.now().isoformat()),
+    }
+
+
+def parse_markdown_handoff(file_path: Path, raw_content: str) -> dict:
+    """Parse a markdown handoff file into structured data.
 
     Uses helper functions for reduced complexity:
     - parse_frontmatter(): Extract YAML frontmatter
@@ -447,8 +554,6 @@ def parse_handoff(file_path: Path) -> dict:
     - extract_session_info(): Parse session from path
     - normalize_outcome(): Map status to canonical outcome
     """
-    raw_content = file_path.read_text()
-
     # Use helper functions for parsing
     frontmatter, content = parse_frontmatter(raw_content)
 
@@ -492,6 +597,21 @@ def parse_handoff(file_path: Path) -> dict:
     }
 
 
+def parse_handoff(file_path: Path) -> dict:
+    """Parse a handoff file (YAML or Markdown) into structured data.
+
+    Detects format by file extension:
+    - .yaml, .yml → YAML format
+    - .md → Markdown format
+    """
+    raw_content = file_path.read_text()
+
+    if file_path.suffix in (".yaml", ".yml"):
+        return parse_yaml_handoff(file_path, raw_content)
+    else:
+        return parse_markdown_handoff(file_path, raw_content)
+
+
 def extract_files(content: str) -> list:
     """Extract file paths from markdown content."""
     files = []
@@ -507,13 +627,22 @@ def extract_files(content: str) -> list:
 
 
 def index_handoffs(conn, base_path: Path = Path("thoughts/shared/handoffs")):
-    """Index all handoffs into the database."""
+    """Index all handoffs into the database.
+
+    Supports both YAML (.yaml, .yml) and Markdown (.md) formats.
+    """
     if not base_path.exists():
         print(f"Handoffs directory not found: {base_path}")
         return 0
 
     count = 0
-    for handoff_file in base_path.rglob("*.md"):
+    # Search for YAML files first (preferred), then Markdown
+    handoff_files = itertools.chain(
+        base_path.rglob("*.yaml"),
+        base_path.rglob("*.yml"),
+        base_path.rglob("*.md"),
+    )
+    for handoff_file in handoff_files:
         try:
             data = parse_handoff(handoff_file)
             db_execute(
