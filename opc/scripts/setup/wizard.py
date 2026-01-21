@@ -1263,6 +1263,64 @@ async def run_setup_wizard() -> None:
         console.print("  Skipped Loogle installation")
         console.print("  [dim]Install later by re-running the wizard[/dim]")
 
+    # Step 13/13: Install scripts to ~/.claude/claude2000/
+    console.print("\n[bold]Step 13/13: Installing Claude2000 scripts...[/bold]")
+    install_dir = Path.home() / ".claude" / "claude2000"
+    scripts_source = Path(__file__).parent.parent  # opc/scripts/
+    scripts_dest = install_dir / "scripts"
+    src_source = Path(__file__).parent.parent.parent / "src" / "runtime"
+    src_dest = install_dir / "src" / "runtime"
+
+    try:
+        # Copy scripts directory
+        install_dir.mkdir(parents=True, exist_ok=True)
+        if scripts_dest.exists():
+            shutil.rmtree(scripts_dest)
+        shutil.copytree(scripts_source, scripts_dest)
+        console.print(f"  [green]OK[/green] Copied scripts to {scripts_dest}")
+
+        # Copy src/runtime if it exists
+        if src_source.exists():
+            src_dest.parent.mkdir(parents=True, exist_ok=True)
+            if src_dest.exists():
+                shutil.rmtree(src_dest)
+            shutil.copytree(src_source, src_dest)
+            console.print(f"  [green]OK[/green] Copied runtime to {src_dest}")
+
+        # Copy .env to install directory for scripts that need it
+        env_source = Path.cwd() / ".env"
+        if env_source.exists():
+            shutil.copy(env_source, install_dir / ".env")
+            console.print(f"  [green]OK[/green] Copied .env configuration")
+
+        # Set CLAUDE_2000_DIR environment variable in shell config
+        shell_config = None
+        shell = os.environ.get("SHELL", "")
+        if "zsh" in shell:
+            shell_config = Path.home() / ".zshrc"
+        elif "bash" in shell:
+            shell_config = Path.home() / ".bashrc"
+
+        if shell_config and shell_config.exists():
+            content = shell_config.read_text()
+            export_line = f'export CLAUDE_2000_DIR="{install_dir}"'
+            # Also add CLAUDE_OPC_DIR as alias for backwards compatibility
+            alias_line = f'export CLAUDE_OPC_DIR="$CLAUDE_2000_DIR"'
+            if "CLAUDE_2000_DIR" not in content:
+                with open(shell_config, "a") as f:
+                    f.write(f"\n# Claude2000 scripts location\n{export_line}\n{alias_line}\n")
+                console.print(f"  [green]OK[/green] Added CLAUDE_2000_DIR to {shell_config.name}")
+            else:
+                console.print(f"  [dim]CLAUDE_2000_DIR already in {shell_config.name}[/dim]")
+        else:
+            console.print(f"  [yellow]NOTE[/yellow] Add to your shell config:")
+            console.print(f'       export CLAUDE_2000_DIR="{install_dir}"')
+
+        console.print(f"  Installed to: {install_dir}")
+    except Exception as e:
+        console.print(f"  [yellow]WARN[/yellow] Could not install scripts: {e}")
+        console.print(f"  Scripts will run from repo location instead")
+
     # Done!
     console.print("\n" + "=" * 60)
     console.print("[bold green]Setup complete![/bold green]")

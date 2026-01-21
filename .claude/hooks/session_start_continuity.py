@@ -223,14 +223,18 @@ def ensure_memory_daemon() -> str | None:
         # Try multiple locations for memory_daemon.py
         daemon_script = None
         possible_locations = [
-            # 1. Relative to hook (development setup)
+            # 1. CLAUDE_2000_DIR env var (new primary)
+            Path(os.environ.get("CLAUDE_2000_DIR", "")) / "scripts" / "core" / "memory_daemon.py",
+            # 2. CLAUDE_OPC_DIR env var (backwards compat)
+            Path(os.environ.get("CLAUDE_OPC_DIR", "")) / "scripts" / "core" / "memory_daemon.py",
+            # 3. New install location ~/.claude/claude2000/
+            Path.home() / ".claude" / "claude2000" / "scripts" / "core" / "memory_daemon.py",
+            # 4. Relative to hook (development setup)
             Path(__file__).parent.parent.parent / "opc" / "scripts" / "core" / "memory_daemon.py",
-            # 2. In .claude/scripts/core/ (wizard-installed)
+            # 5. In .claude/scripts/core/ (legacy wizard-installed)
             Path(__file__).parent.parent / "scripts" / "core" / "memory_daemon.py",
-            # 3. Global ~/.claude/scripts/core/ (global install)
+            # 6. Global ~/.claude/scripts/core/ (legacy global install)
             Path.home() / ".claude" / "scripts" / "core" / "memory_daemon.py",
-            # 4. Legacy ~/.opc-dev location
-            Path.home() / ".opc-dev" / "opc" / "scripts" / "core" / "memory_daemon.py",
         ]
 
         for loc in possible_locations:
