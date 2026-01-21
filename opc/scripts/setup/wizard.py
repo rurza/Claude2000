@@ -567,10 +567,10 @@ async def run_setup_wizard() -> None:
     # Step 2: Database config
     console.print("\n[bold]Step 2/13: Database Configuration[/bold]")
     console.print("  Choose your database backend:")
-    console.print("    [bold]docker[/bold]    - PostgreSQL in Docker (recommended)")
-    console.print("    [bold]embedded[/bold]  - Embedded PostgreSQL (no Docker needed)")
-    console.print("    [bold]sqlite[/bold]    - SQLite fallback (simplest, no cross-terminal)")
-    db_mode = Prompt.ask("\n  Database mode", choices=["docker", "embedded", "sqlite"], default="docker")
+    console.print("    [bold]embedded[/bold]  - Embedded PostgreSQL (recommended, no Docker)")
+    console.print("    [bold]docker[/bold]    - PostgreSQL in Docker (if you prefer containers)")
+    console.print("    [bold]sqlite[/bold]    - SQLite fallback (simplest, limited features)")
+    db_mode = Prompt.ask("\n  Database mode", choices=["embedded", "docker", "sqlite"], default="embedded")
 
     if db_mode == "embedded":
         from scripts.setup.embedded_postgres import setup_embedded_environment
