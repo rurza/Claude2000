@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Container Stack Setup for OPC v3.
+"""Container Stack Setup for Claude2000.
 
 Manages the Docker/Podman Compose stack lifecycle including:
 - Starting services (PostgreSQL, Redis, Sandbox)

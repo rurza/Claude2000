@@ -1,6 +1,6 @@
 """Embedded PostgreSQL support via pgserver.
 
-Provides zero-Docker postgres + pgvector for Continuous Claude.
+Provides zero-Docker postgres + pgvector for Claude2000.
 Uses pgserver (pip install pgserver) which bundles postgres binaries.
 
 USAGE:

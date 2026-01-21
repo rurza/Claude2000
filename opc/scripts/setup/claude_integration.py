@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude Code Integration Installer for OPC v3.
+"""Claude Code Integration Installer for Claude2000.
 
 Cross-platform installer that:
 1. Detects existing Claude Code setup (hooks, skills, MCPs, rules)

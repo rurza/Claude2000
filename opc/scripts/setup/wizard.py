@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Setup Wizard for OPC v3.
+"""Setup Wizard for Claude2000.
 
-Interactive setup wizard for configuring the Claude Continuity Kit.
+Interactive setup wizard for configuring the Claude2000.
 Handles prerequisite checking, database configuration, API keys,
 and environment file generation.
 
@@ -519,7 +519,7 @@ async def run_setup_wizard() -> None:
     7. Install Claude Code integration (hooks, skills, rules)
     """
     console.print(
-        Panel.fit("[bold]CLAUDE CONTINUITY KIT v3 - SETUP WIZARD[/bold]", border_style="blue")
+        Panel.fit("[bold]CLAUDE2000 - SETUP WIZARD[/bold]", border_style="blue")
     )
 
     # Step 0: Backup global ~/.claude (safety first)
@@ -1344,7 +1344,7 @@ async def run_uninstall_wizard() -> None:
     )
 
     console.print(
-        Panel.fit("[bold]CLAUDE CONTINUITY KIT v3 - UNINSTALL[/bold]", border_style="red")
+        Panel.fit("[bold]CLAUDE2000 - UNINSTALL[/bold]", border_style="red")
     )
 
     global_claude = get_global_claude_dir()
@@ -1406,7 +1406,7 @@ async def main():
     # Show menu if no args
     if len(sys.argv) == 1:
         console.print(
-            Panel.fit("[bold]CLAUDE CONTINUITY KIT v3[/bold]", border_style="blue")
+            Panel.fit("[bold]CLAUDE2000[/bold]", border_style="blue")
         )
         console.print("\n[bold]Options:[/bold]")
         console.print("  [bold]1[/bold] - Install / Update")

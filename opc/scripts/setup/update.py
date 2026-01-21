@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""OPC Update Wizard - Pull latest and update installed components.
+"""Claude2000 Update Wizard - Pull latest and update installed components.
 
-Updates hooks, skills, rules, and agents from the latest OPC repo.
-Preserves user customizations by only updating OPC-owned files.
+Updates hooks, skills, rules, and agents from the latest Claude2000 repo.
+Preserves user customizations by only updating Claude2000-owned files.
 
 USAGE:
     uv run python -m scripts.setup.update
@@ -210,7 +210,7 @@ def build_typescript_hooks(hooks_dir: Path) -> tuple[bool, str]:
 
 def run_update() -> None:
     """Run the update wizard."""
-    console.print("[bold]OPC UPDATE WIZARD[/bold]\n")
+    console.print("[bold]CLAUDE2000 UPDATE WIZARD[/bold]\n")
 
     opc_dir = get_opc_dir()
     claude_dir = get_global_claude_dir()
