@@ -1,0 +1,83 @@
+name: Documentation Validation
+
+on:
+  push:
+    paths: ['**.md', 'docs/**', '.claude/skills/**', '.claude/hooks/**', '.claude/agents/**']
+  pull_request:
+
+jobs:
+  markdownlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: '**/*.md'
+          config: '.markdownlint.yaml'
+
+  link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run lychee for link checking
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --verbose --no-progress '**/*.md'
+          fail: true
+
+  count-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Count and validate
+        run: |
+          ACTUAL_SKILLS=$(ls .claude/skills/*/SKILL.md 2>/dev/null | wc -l)
+          ACTUAL_HOOKS=$(ls .claude/hooks/dist/*.mjs 2>/dev/null | wc -l)
+          ACTUAL_AGENTS=$(ls .claude/agents/*.md 2>/dev/null | wc -l)
+          echo "Actual Skills: $ACTUAL_SKILLS, Hooks: $ACTUAL_HOOKS, Agents: $ACTUAL_AGENTS"
+
+          # Get documented counts from README
+          if grep -q "Skills-" README.md; then
+            DOC_SKILLS=$(grep -o "[0-9]\+ skills" README.md | head -1 | grep -o "[0-9]\+")
+            DOC_HOOKS=$(grep -o "[0-9]\+ hooks" README.md | head -1 | grep -o "[0-9]\+")
+            DOC_AGENTS=$(grep -o "[0-9]\+ agents" README.md | head -1 | grep -o "[0-9]\+")
+            echo "Doc Skills: $DOC_SKILLS, Hooks: $DOC_HOOKS, Agents: $DOC_AGENTS"
+
+            if [ "$ACTUAL_SKILLS" != "$DOC_SKILLS" ] || [ "$ACTUAL_HOOKS" != "$DOC_HOOKS" ] || [ "$ACTUAL_AGENTS" != "$DOC_AGENTS" ]; then
+              echo "Count mismatch detected - counts will be auto-updated"
+            fi
+          fi
+
+  update-counts:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Update documentation counts
+        run: |
+          python scripts/update-doc-counts.py
+      - name: Commit and push changes
+        if: changes_detected
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git status
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: Auto-update documentation counts"
+            git push
+          fi
+        env:
+          changes_detected: $(git diff --name-only | wc -c)

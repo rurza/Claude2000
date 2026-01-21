@@ -3,7 +3,7 @@
 Global Memory Recall Script (Bundled Version)
 
 Self-contained script for ~/.claude/scripts/ that works from any project directory.
-- PostgreSQL: If DATABASE_URL or OPC_POSTGRES_URL is set (requires asyncpg)
+- PostgreSQL: If DATABASE_URL or CLAUDE2000_POSTGRES_URL is set (requires asyncpg)
 - SQLite: Default fallback at ~/.claude/memory.db (built-in, zero deps)
 
 Usage:

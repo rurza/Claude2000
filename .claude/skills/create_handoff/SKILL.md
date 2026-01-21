@@ -107,7 +107,7 @@ Options:
 After the user responds, mark the outcome:
 ```bash
 # Mark the most recent handoff (works with PostgreSQL or SQLite)
-cd "$CLAUDE_OPC_DIR" && uv run python scripts/core/artifact_mark.py --latest --outcome <USER_CHOICE>
+cd "$CLAUDE_2000_DIR" && uv run python scripts/core/artifact_mark.py --latest --outcome <USER_CHOICE>
 ```
 
 This command auto-detects the database (PostgreSQL if configured, SQLite fallback).

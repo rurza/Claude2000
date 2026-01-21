@@ -25,7 +25,7 @@ export { SAFE_ID_PATTERN, isValidId } from './pattern-router.js';
  * Checks environment variables in priority order:
  * 1. CONTINUOUS_CLAUDE_DB_URL (canonical)
  * 2. DATABASE_URL (backwards compat)
- * 3. OPC_POSTGRES_URL (legacy)
+ * 3. CLAUDE2000_POSTGRES_URL (legacy)
  * 4. Default local development connection
  *
  * @returns PostgreSQL connection string
@@ -33,7 +33,7 @@ export { SAFE_ID_PATTERN, isValidId } from './pattern-router.js';
 export function getPgConnectionString(): string {
   return process.env.CONTINUOUS_CLAUDE_DB_URL ||
     process.env.DATABASE_URL ||
-    process.env.OPC_POSTGRES_URL ||
+    process.env.CLAUDE2000_POSTGRES_URL ||
     'postgresql://claude:claude_dev@localhost:5432/continuous_claude';
 }
 

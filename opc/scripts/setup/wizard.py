@@ -438,11 +438,17 @@ def generate_env_file(config: dict[str, Any], env_path: Path) -> None:
         elif mode == "embedded":
             pgdata = db.get("pgdata", "")
             venv = db.get("venv", "")
+            uri = db.get("uri", "")
             lines.append(f"PGSERVER_PGDATA={pgdata}")
             lines.append(f"PGSERVER_VENV={venv}")
             lines.append("")
             lines.append("# Connection string (Unix socket)")
-            lines.append(f"CONTINUOUS_CLAUDE_DB_URL=postgresql://postgres:@/postgres?host={pgdata}")
+            # Use provided URI if available, otherwise construct from pgdata
+            if uri:
+                lines.append(f"CONTINUOUS_CLAUDE_DB_URL={uri}")
+            else:
+                # Fallback - will be updated after initialization (postgres user for portability)
+                lines.append(f"CONTINUOUS_CLAUDE_DB_URL=postgresql://postgres:@/continuous_claude?host={pgdata}")
         else:  # sqlite
             lines.append("# SQLite mode - no connection string needed")
             lines.append("CONTINUOUS_CLAUDE_DB_URL=")
@@ -572,19 +578,38 @@ async def run_setup_wizard() -> None:
     generate_env_file(config, env_path)
     console.print(f"  [green]OK[/green] Generated {env_path}")
 
-    # Step 6: Database Setup (migrations)
+    # Step 6: Database Setup (initialize and migrate)
     console.print("\n[bold]Step 5/9: Database Setup[/bold]")
     if db_mode == "embedded":
-        console.print("  Running migrations on embedded PostgreSQL...")
+        console.print("  Initializing embedded PostgreSQL (this may take a moment)...")
         try:
-            from scripts.setup.embedded_postgres import run_migrations_direct
-            result = await run_migrations_direct(db_config.get("pgdata", ""))
+            from scripts.setup.embedded_postgres import initialize_embedded_postgres
+
+            pgdata = Path(db_config.get("pgdata", ""))
+            venv = Path(db_config.get("venv", ""))
+            schema_path = Path(__file__).parent.parent.parent / "docker" / "init-schema.sql"
+
+            result = await initialize_embedded_postgres(pgdata, venv, schema_path)
             if result["success"]:
-                console.print("  [green]OK[/green] Migrations complete")
+                console.print("  [green]OK[/green] Embedded PostgreSQL initialized")
+                if result.get("warnings"):
+                    for warn in result["warnings"]:
+                        console.print(f"  [dim]Note: {warn}[/dim]")
+                # Update db_config with the actual URI and regenerate .env
+                db_config["uri"] = result.get("uri", "")
+                config["database"] = db_config
+                generate_env_file(config, env_path)
+                console.print(f"  [green]OK[/green] Updated {env_path} with correct connection URI")
             else:
-                console.print(f"  [yellow]WARN[/yellow] {result.get('error', 'Unknown error')}")
+                console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
+                console.print("  Falling back to SQLite mode")
+                db_mode = "sqlite"
+                db_config = {"mode": "sqlite"}
         except Exception as e:
-            console.print(f"  [yellow]WARN[/yellow] Could not run migrations: {e}")
+            console.print(f"  [red]ERROR[/red] Could not initialize embedded postgres: {e}")
+            console.print("  Falling back to SQLite mode")
+            db_mode = "sqlite"
+            db_config = {"mode": "sqlite"}
     elif db_mode == "sqlite":
         console.print("  [dim]SQLite mode - no migrations needed[/dim]")
 
@@ -979,6 +1004,47 @@ async def run_setup_wizard() -> None:
         if env_source.exists():
             shutil.copy(env_source, install_dir / ".env")
             console.print(f"  [green]OK[/green] Copied .env configuration")
+
+        # Create Python virtual environment with required dependencies
+        console.print("  Creating Python virtual environment...")
+        venv_path = install_dir / ".venv"
+        try:
+            import subprocess
+            # Create venv using uv
+            result = subprocess.run(
+                ["uv", "venv", str(venv_path)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode == 0:
+                console.print(f"  [green]OK[/green] Created venv at {venv_path}")
+
+                # Install minimal dependencies for memory scripts
+                console.print("  Installing dependencies (this may take a minute)...")
+                deps = [
+                    "python-dotenv",
+                    "asyncpg",
+                    "numpy",
+                    "sentence-transformers",
+                    "httpx",  # For HTTP requests in embedding service
+                ]
+                pip_result = subprocess.run(
+                    ["uv", "pip", "install", "--python", str(venv_path / "bin" / "python")] + deps,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,  # 5 minutes for sentence-transformers
+                )
+                if pip_result.returncode == 0:
+                    console.print(f"  [green]OK[/green] Installed dependencies")
+                else:
+                    console.print(f"  [yellow]WARN[/yellow] Some dependencies failed: {pip_result.stderr[:200]}")
+            else:
+                console.print(f"  [yellow]WARN[/yellow] Could not create venv: {result.stderr[:200]}")
+        except subprocess.TimeoutExpired:
+            console.print("  [yellow]WARN[/yellow] Venv creation timed out")
+        except Exception as e:
+            console.print(f"  [yellow]WARN[/yellow] Venv creation failed: {e}")
 
         # Set CLAUDE_2000_DIR environment variable in shell config
         shell_config = None

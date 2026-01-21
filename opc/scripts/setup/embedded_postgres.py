@@ -59,6 +59,153 @@ def start_embedded_postgres(pgdata: Path) -> dict[str, Any]:
         }
 
 
+async def initialize_embedded_postgres(pgdata: Path, venv_path: Path, schema_path: Path) -> dict[str, Any]:
+    """Initialize and start embedded postgres with proper configuration.
+
+    This function:
+    1. Finds postgres binaries in the pgserver venv
+    2. Runs initdb if database not initialized
+    3. Configures postgres to use socket in pgdata directory
+    4. Starts postgres
+    5. Creates the postgres superuser role
+    6. Creates the continuous_claude database
+    7. Creates pgvector extension
+    8. Applies the schema
+
+    Args:
+        pgdata: Directory for postgres data files
+        venv_path: Path to pgserver venv (contains postgres binaries)
+        schema_path: Path to init-schema.sql
+
+    Returns:
+        dict with keys:
+            - success: bool
+            - uri: str (connection URI if success)
+            - error: str (if failed)
+            - warnings: list[str] (optional)
+    """
+    import asyncio
+    import glob
+    import os
+    import subprocess
+    import sys
+
+    warnings = []
+
+    # Find postgres binaries in pgserver installation
+    pgserver_pattern = str(venv_path / "lib" / "python*" / "site-packages" / "pgserver" / "pginstall" / "bin")
+    bin_dirs = glob.glob(pgserver_pattern)
+    if not bin_dirs:
+        return {"success": False, "error": f"Could not find pgserver binaries at {pgserver_pattern}"}
+
+    bin_dir = Path(bin_dirs[0])
+    initdb = bin_dir / "initdb"
+    pg_ctl = bin_dir / "pg_ctl"
+    psql = bin_dir / "psql"
+
+    if not all(p.exists() for p in [initdb, pg_ctl, psql]):
+        return {"success": False, "error": f"Missing postgres binaries in {bin_dir}"}
+
+    # Ensure pgdata directory exists
+    pgdata.mkdir(parents=True, exist_ok=True)
+
+    # Check if database is already initialized
+    pg_version_file = pgdata / "PG_VERSION"
+    if not pg_version_file.exists():
+        # Run initdb
+        proc = await asyncio.create_subprocess_exec(
+            str(initdb), "-D", str(pgdata),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return {"success": False, "error": f"initdb failed: {stderr.decode()}"}
+
+    # Configure postgres to use socket in pgdata directory
+    postgresql_conf = pgdata / "postgresql.conf"
+    if postgresql_conf.exists():
+        conf_content = postgresql_conf.read_text()
+        if "unix_socket_directories" not in conf_content or f"'{pgdata}'" not in conf_content:
+            # Add or update unix_socket_directories
+            with open(postgresql_conf, "a") as f:
+                f.write(f"\n# Added by Claude2000 setup\nunix_socket_directories = '{pgdata}'\n")
+
+    # Check if server is already running
+    socket_file = pgdata / ".s.PGSQL.5432"
+    if not socket_file.exists():
+        # Start postgres
+        logfile = pgdata / "logfile"
+        proc = await asyncio.create_subprocess_exec(
+            str(pg_ctl), "-D", str(pgdata), "-l", str(logfile), "start",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return {"success": False, "error": f"pg_ctl start failed: {stderr.decode()}"}
+
+        # Wait for socket to appear
+        for _ in range(30):  # 3 seconds max
+            if socket_file.exists():
+                break
+            await asyncio.sleep(0.1)
+        else:
+            return {"success": False, "error": "Postgres started but socket not found"}
+
+    # Get current OS user (used by initdb as superuser)
+    current_user = os.environ.get("USER", os.environ.get("USERNAME", "postgres"))
+
+    # Helper to run psql commands (initially as current OS user)
+    async def run_psql(sql: str, database: str = "postgres", user: str = current_user) -> tuple[bool, str]:
+        proc = await asyncio.create_subprocess_exec(
+            str(psql), "-h", str(pgdata), "-U", user, "-d", database, "-c", sql,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        return proc.returncode == 0, stderr.decode()
+
+    # Create postgres superuser role (for cross-machine portability)
+    success, err = await run_psql("CREATE ROLE postgres WITH SUPERUSER LOGIN;")
+    if not success and "already exists" not in err:
+        warnings.append(f"Could not create postgres role: {err}")
+
+    # Create continuous_claude database
+    success, err = await run_psql("CREATE DATABASE continuous_claude;")
+    if not success and "already exists" not in err:
+        return {"success": False, "error": f"Could not create database: {err}"}
+
+    # Enable pgvector extension
+    success, err = await run_psql("CREATE EXTENSION IF NOT EXISTS vector;", "continuous_claude")
+    if not success:
+        return {"success": False, "error": f"Could not create vector extension: {err}"}
+
+    # Apply schema if provided
+    if schema_path and schema_path.exists():
+        proc = await asyncio.create_subprocess_exec(
+            str(psql), "-h", str(pgdata), "-U", current_user, "-d", "continuous_claude",
+            "-f", str(schema_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        stderr_str = stderr.decode()
+        # pg_trgm failure is expected and ok
+        if proc.returncode != 0 and "pg_trgm" not in stderr_str:
+            return {"success": False, "error": f"Schema application failed: {stderr_str}"}
+        if "pg_trgm" in stderr_str and "is not available" in stderr_str:
+            warnings.append("Optional extension pg_trgm not available (ok)")
+
+    # Final connection URI for continuous_claude database (use postgres user for portability)
+    final_uri = f"postgresql://postgres:@/continuous_claude?host={pgdata}"
+
+    result = {"success": True, "uri": final_uri}
+    if warnings:
+        result["warnings"] = warnings
+    return result
+
+
 def stop_embedded_postgres(pgdata: Path) -> dict[str, Any]:
     """Stop embedded postgres server.
 
@@ -315,10 +462,12 @@ def generate_database_url(config: dict[str, Any]) -> str:
         return ""
 
     if mode == "embedded":
-        # Embedded uses Unix socket via pgdata path
+        # If URI was set by initialize_embedded_postgres, use it
+        if config.get("uri"):
+            return config["uri"]
+        # Embedded uses Unix socket via pgdata path (postgres user for portability)
         pgdata = config.get("pgdata", "")
-        # pgserver format: postgresql://postgres:@/postgres?host=/path/to/pgdata
-        return f"postgresql://postgres:@/postgres?host={pgdata}"
+        return f"postgresql://postgres:@/continuous_claude?host={pgdata}"
 
     # Docker mode (default)
     host = config.get("host", "localhost")

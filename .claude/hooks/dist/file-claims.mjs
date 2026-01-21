@@ -8,22 +8,26 @@ import { spawnSync } from "child_process";
 import { existsSync } from "fs";
 import { join } from "path";
 function getOpcDir() {
+  const env2000Dir = process.env.CLAUDE_2000_DIR;
+  if (env2000Dir && existsSync(env2000Dir)) {
+    return env2000Dir;
+  }
   const envOpcDir = process.env.CLAUDE_OPC_DIR;
   if (envOpcDir && existsSync(envOpcDir)) {
     return envOpcDir;
+  }
+  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+  if (homeDir) {
+    const claude2000Dir = join(homeDir, ".claude", "claude2000");
+    const claude2000Scripts = join(claude2000Dir, "scripts", "core");
+    if (existsSync(claude2000Scripts)) {
+      return claude2000Dir;
+    }
   }
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const localOpc = join(projectDir, "opc");
   if (existsSync(localOpc)) {
     return localOpc;
-  }
-  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-  if (homeDir) {
-    const globalClaude = join(homeDir, ".claude");
-    const globalScripts = join(globalClaude, "scripts", "core");
-    if (existsSync(globalScripts)) {
-      return globalClaude;
-    }
   }
   return null;
 }
@@ -38,7 +42,7 @@ function requireOpcDir() {
 
 // src/shared/db-utils-pg.ts
 function getPgConnectionString() {
-  return process.env.CONTINUOUS_CLAUDE_DB_URL || process.env.DATABASE_URL || process.env.OPC_POSTGRES_URL || "postgresql://claude:claude_dev@localhost:5432/continuous_claude";
+  return process.env.CONTINUOUS_CLAUDE_DB_URL || process.env.DATABASE_URL || process.env.CLAUDE2000_POSTGRES_URL || "postgresql://claude:claude_dev@localhost:5432/continuous_claude";
 }
 function runPgQuery(pythonCode, args = []) {
   const opcDir = requireOpcDir();
