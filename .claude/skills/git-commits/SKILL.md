@@ -12,7 +12,7 @@ When the user asks to commit, push, or save changes to git:
 
 **DO NOT** run `git commit` directly. Instead:
 
-```
+```text
 Skill("commit")
 ```
 
@@ -31,14 +31,14 @@ The `/commit` skill:
 
 When you see these in user prompts, use the commit skill:
 - "commit", "push", "save changes"
-- "push to github", "push changes"
+- "push to GitHub", "push changes"
 - "commit and push"
 
 ## After Commit
 
 The skill will prompt you to run:
 ```bash
-bash "$CLAUDE_PROJECT_DIR/.claude/scripts/generate-reasoning.sh" <hash> "<message>"
+bash "$CLAUDE_CC_DIR/.claude/scripts/generate-reasoning.sh" <hash> "<message>"
 ```
 
 Then push if requested:

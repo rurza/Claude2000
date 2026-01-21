@@ -846,21 +846,32 @@ async def run_setup_wizard() -> None:
         shell_config = Path.home() / ".bashrc"
 
     opc_dir = _project_root  # Use script location, not cwd (robust if invoked from elsewhere)
+    cc_dir = opc_dir.parent  # Continuous-Claude root (parent of opc/)
     if shell_config and shell_config.exists():
         content = shell_config.read_text()
-        export_line = f'export CLAUDE_OPC_DIR="{opc_dir}"'
+        export_line_opc = f'export CLAUDE_OPC_DIR="{opc_dir}"'
+        export_line_cc = f'export CLAUDE_CC_DIR="{cc_dir}"'
+        added_vars = []
         if "CLAUDE_OPC_DIR" not in content:
             with open(shell_config, "a") as f:
-                f.write(f"\n# Continuous-Claude OPC directory (for skills to find scripts)\n{export_line}\n")
-            console.print(f"  [green]OK[/green] Added CLAUDE_OPC_DIR to {shell_config.name}")
+                f.write(f"\n# Continuous-Claude OPC directory (for skills to find scripts)\n{export_line_opc}\n")
+            added_vars.append("CLAUDE_OPC_DIR")
+        if "CLAUDE_CC_DIR" not in content:
+            with open(shell_config, "a") as f:
+                f.write(f"\n# Continuous-Claude root directory (for .claude/scripts/)\n{export_line_cc}\n")
+            added_vars.append("CLAUDE_CC_DIR")
+        if added_vars:
+            console.print(f"  [green]OK[/green] Added {', '.join(added_vars)} to {shell_config.name}")
         else:
-            console.print(f"  [dim]CLAUDE_OPC_DIR already in {shell_config.name}[/dim]")
+            console.print(f"  [dim]CLAUDE_OPC_DIR and CLAUDE_CC_DIR already in {shell_config.name}[/dim]")
     elif sys.platform == "win32":
         console.print("  [yellow]NOTE[/yellow] Add to your environment:")
         console.print(f'       set CLAUDE_OPC_DIR="{opc_dir}"')
+        console.print(f'       set CLAUDE_CC_DIR="{cc_dir}"')
     else:
         console.print("  [yellow]NOTE[/yellow] Add to your shell config:")
         console.print(f'       export CLAUDE_OPC_DIR="{opc_dir}"')
+        console.print(f'       export CLAUDE_CC_DIR="{cc_dir}"')
 
     # Step 8: Math Features (Optional)
     console.print("\n[bold]Step 9/13: Math Features (Optional)[/bold]")
@@ -1056,36 +1067,6 @@ async def run_setup_wizard() -> None:
                     else:
                         console.print("  Semantic search disabled")
                         console.print("  [dim]Enable later in .claude/settings.json[/dim]")
-
-                    # TLDR Hooks Configuration
-                    console.print("")
-                    console.print("  [bold]TLDR Hooks Configuration[/bold]")
-                    console.print("  TLDR hooks automatically enhance code reading:")
-                    console.print("    - Read files → Get AST + call graph instead of raw text")
-                    console.print("    - Grep search → Route to TLDR semantic search")
-                    console.print("    - Task spawn → Auto-inject TLDR context")
-                    console.print("  [dim]Note: This changes default tool behavior[/dim]")
-
-                    enable_tldr_hooks = Confirm.ask(
-                        "\n  Enable TLDR hooks for automatic code analysis?", default=True
-                    )
-
-                    if not enable_tldr_hooks:
-                        # Check if Claude Code integration was installed (Step 7)
-                        settings_path = get_global_claude_dir() / "settings.json"
-                        if settings_path.exists():
-                            from scripts.setup.claude_integration import strip_tldr_hooks_from_settings
-
-                            if strip_tldr_hooks_from_settings(settings_path):
-                                console.print("  [green]OK[/green] TLDR hooks disabled")
-                            else:
-                                console.print("  [yellow]WARN[/yellow] Could not modify settings.json")
-                        else:
-                            console.print("  [green]OK[/green] TLDR hooks will not be installed")
-                    else:
-                        console.print("  [green]OK[/green] TLDR hooks enabled")
-                        console.print("  [dim]Hooks will enhance Read, Grep, and Task tools[/dim]")
-
                 else:
                     console.print("  [yellow]WARN[/yellow] TLDR installed but not on PATH")
             else:
@@ -1101,32 +1082,6 @@ async def run_setup_wizard() -> None:
     else:
         console.print("  Skipped TLDR installation")
         console.print("  [dim]Install later with: uv tool install llm-tldr[/dim]")
-
-        # Even if TLDR CLI not installed, ask about hooks (they might install CLI later)
-        console.print("")
-        console.print("  [bold]TLDR Hooks Configuration[/bold]")
-        console.print("  TLDR hooks enhance code reading (requires TLDR CLI to be installed).")
-        console.print("  [dim]If you install TLDR later, hooks will activate automatically.[/dim]")
-
-        enable_tldr_hooks = Confirm.ask(
-            "\n  Enable TLDR hooks for when TLDR CLI is installed?", default=True
-        )
-
-        if not enable_tldr_hooks:
-            # Strip TLDR hooks from settings.json
-            settings_path = get_global_claude_dir() / "settings.json"
-            if settings_path.exists():
-                from scripts.setup.claude_integration import strip_tldr_hooks_from_settings
-
-                if strip_tldr_hooks_from_settings(settings_path):
-                    console.print("  [green]OK[/green] TLDR hooks disabled")
-                else:
-                    console.print("  [yellow]WARN[/yellow] Could not modify settings.json")
-            else:
-                console.print("  [green]OK[/green] TLDR hooks will not be installed")
-        else:
-            console.print("  [green]OK[/green] TLDR hooks will be enabled when CLI is installed")
-
 
     # Step 10: Diagnostics Tools (Shift-Left Feedback)
     console.print("\n[bold]Step 11/13: Diagnostics Tools (Shift-Left Feedback)[/bold]")
