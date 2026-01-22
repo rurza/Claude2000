@@ -100,11 +100,11 @@ Make Claude2000 fully self-contained within `~/.claude/`. No custom environment 
 - [x] Auto-install: embedded postgres, TLDR, local embeddings
 - [x] Remove interactive prompts for feature toggles
 
-### Phase 3: Path Standardization
-- [ ] All scripts use `~/.claude/` base path
-- [ ] All database connections use `~/.claude/.env`
-- [ ] All hooks reference `~/.claude/` paths
-- [ ] Shell scripts use `$HOME/.claude/` (POSIX compatible)
+### Phase 3: Path Standardization ✅ DONE
+- [x] All scripts use `~/.claude/` base path
+- [x] All database connections use `CLAUDE2000_DB_URL` (from `~/.claude/.env`)
+- [x] All hooks reference `~/.claude/` paths (verified)
+- [x] Shell scripts use `~/.claude/` or relative paths (verified)
 
 ### Phase 4: Documentation Update
 - [ ] Update CLAUDE.md with new structure
