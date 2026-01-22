@@ -123,10 +123,10 @@ def _ensure_embedded_postgres_running() -> None:
     import subprocess
 
     pgdata_path = Path(pgdata)
-    socket_path = pgdata_path / ".s.PGSQL.5432"
-
-    # Check if server is already running
-    if socket_path.exists():
+    # Check if server is already running (try both common ports)
+    socket_5432 = pgdata_path / ".s.PGSQL.5432"
+    socket_5433 = pgdata_path / ".s.PGSQL.5433"
+    if socket_5432.exists() or socket_5433.exists():
         return
 
     # Start server using pgserver-venv with pg_ctl
@@ -158,7 +158,8 @@ pgserver.pg_ctl(
         if result.returncode == 0:
             _logger.info(f"Started embedded PostgreSQL from {pgdata}")
         else:
-            _logger.warning(f"Failed to start embedded PostgreSQL: {result.stderr[:200]}")
+            # Debug level - pg_ctl fails if already running, which is fine
+            _logger.debug(f"pg_ctl start returned non-zero (may already be running): {result.stderr[:200]}")
     except subprocess.TimeoutExpired:
         _logger.warning("Timeout starting embedded PostgreSQL")
     except Exception as e:
