@@ -434,7 +434,7 @@ def generate_env_file(config: dict[str, Any], env_path: Path) -> None:
                 lines.append(f"POSTGRES_PASSWORD={password}")
             lines.append("")
             lines.append("# Connection string for scripts (canonical name)")
-            lines.append(f"CONTINUOUS_CLAUDE_DB_URL=postgresql://{user}:{password}@{host}:{port}/{database}")
+            lines.append(f"CLAUDE2000_DB_URL=postgresql://{user}:{password}@{host}:{port}/{database}")
         elif mode == "embedded":
             pgdata = db.get("pgdata", "")
             venv = db.get("venv", "")
@@ -445,13 +445,13 @@ def generate_env_file(config: dict[str, Any], env_path: Path) -> None:
             lines.append("# Connection string (Unix socket)")
             # Use provided URI if available, otherwise construct from pgdata
             if uri:
-                lines.append(f"CONTINUOUS_CLAUDE_DB_URL={uri}")
+                lines.append(f"CLAUDE2000_DB_URL={uri}")
             else:
                 # Fallback - will be updated after initialization (postgres user for portability)
-                lines.append(f"CONTINUOUS_CLAUDE_DB_URL=postgresql://postgres:@/continuous_claude?host={pgdata}")
+                lines.append(f"CLAUDE2000_DB_URL=postgresql://postgres:@/continuous_claude?host={pgdata}")
         else:  # sqlite
             lines.append("# SQLite mode - no connection string needed")
-            lines.append("CONTINUOUS_CLAUDE_DB_URL=")
+            lines.append("CLAUDE2000_DB_URL=")
         lines.append("")
 
     # Embedding configuration
@@ -631,7 +631,7 @@ async def run_setup_wizard() -> None:
                 except Exception as e:
                     console.print(f"  [yellow]WARN[/yellow] Could not update settings.json: {e}")
                     console.print(f"  [dim]Hooks may not connect to embedded postgres. Add manually:[/dim]")
-                    console.print(f'  [dim]"env": {{"CONTINUOUS_CLAUDE_DB_URL": "{result.get("uri", "")}"}}"[/dim]')
+                    console.print(f'  [dim]"env": {{"CLAUDE2000_DB_URL": "{result.get("uri", "")}"}}"[/dim]')
             else:
                 console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
                 console.print("  Falling back to SQLite mode")

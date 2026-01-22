@@ -109,7 +109,7 @@ async def store_learning_v2(
         return {"success": False, "error": "No content provided"}
 
     # Get backend - prefer postgres if connection string is set
-    if os.environ.get("CONTINUOUS_CLAUDE_DB_URL") or os.environ.get("DATABASE_URL"):
+    if os.environ.get("CLAUDE2000_DB_URL") or os.environ.get("DATABASE_URL"):
         backend = "postgres"
     else:
         backend = get_default_backend()
@@ -237,7 +237,7 @@ async def store_learning(
     }
 
     # Get backend - prefer postgres if connection string is set
-    if os.environ.get("CONTINUOUS_CLAUDE_DB_URL") or os.environ.get("DATABASE_URL"):
+    if os.environ.get("CLAUDE2000_DB_URL") or os.environ.get("DATABASE_URL"):
         backend = "postgres"
     else:
         backend = get_default_backend()

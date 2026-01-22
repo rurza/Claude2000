@@ -51,7 +51,7 @@ except ImportError:
 
 def get_postgres_url() -> str | None:
     """Get PostgreSQL URL from environment variables (canonical first)."""
-    return os.environ.get("CONTINUOUS_CLAUDE_DB_URL") or os.environ.get("DATABASE_URL")
+    return os.environ.get("CLAUDE2000_DB_URL") or os.environ.get("DATABASE_URL")
 
 
 def use_postgres() -> bool:

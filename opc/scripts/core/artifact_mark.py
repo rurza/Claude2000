@@ -6,7 +6,7 @@ USAGE: artifact_mark.py --handoff ID --outcome OUTCOME [--notes NOTES]
 
 Mark a handoff with user outcome in the database (PostgreSQL or SQLite).
 
-Supports PostgreSQL (via DATABASE_URL or CONTINUOUS_CLAUDE_DB_URL) with
+Supports PostgreSQL (via DATABASE_URL or CLAUDE2000_DB_URL) with
 automatic fallback to SQLite for installations without PostgreSQL.
 
 Examples:
@@ -44,7 +44,7 @@ if opc_env.exists():
 
 def get_postgres_url() -> str | None:
     """Get PostgreSQL URL from environment if available (canonical first)."""
-    return os.environ.get("CONTINUOUS_CLAUDE_DB_URL") or os.environ.get("DATABASE_URL")
+    return os.environ.get("CLAUDE2000_DB_URL") or os.environ.get("DATABASE_URL")
 
 
 def get_sqlite_path() -> Path:
