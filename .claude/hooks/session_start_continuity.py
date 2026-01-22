@@ -758,7 +758,7 @@ def main() -> None:
                                 task_label = f"task-{h['task_number']}" if h['task_number'] else "handoff"
                                 preview = h['task_summary'][:60] + "..." if h['task_summary'] else "(no summary)"
                                 additional_context += f"- **{h['session_name']}/{task_label}** (ID: `{h['id'][:8]}`): {preview}\n"
-                            additional_context += "\nTo mark an outcome:\n```bash\ncd $CLAUDE_2000_DIR && uv run python scripts/core/artifact_mark.py --handoff <ID> --outcome SUCCEEDED|PARTIAL_PLUS|PARTIAL_MINUS|FAILED\n```\n"
+                            additional_context += "\nTo mark an outcome:\n```bash\ncd ~/.claude && uv run python scripts/core/artifact_mark.py --handoff <ID> --outcome SUCCEEDED|PARTIAL_PLUS|PARTIAL_MINUS|FAILED\n```\n"
 
         except Exception as e:
             print(f"Warning: Error scanning handoffs: {e}", file=sys.stderr)

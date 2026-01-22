@@ -13,32 +13,30 @@ Query memory proactively when:
 ## How to Recall
 
 ```bash
-(cd $CLAUDE_2000_DIR && PYTHONPATH=. uv run python scripts/core/recall_learnings.py --query "your search terms")
+cd ~/.claude && PYTHONPATH=. uv run python scripts/core/recall_learnings.py --query "your search terms"
 ```
-
-**IMPORTANT:** Always run from `opc/` directory to load correct environment variables.
 
 ### Options
 
 ```bash
 # Default: Hybrid RRF search (text + vector combined) - RECOMMENDED
-(cd $CLAUDE_2000_DIR && PYTHONPATH=. uv run python scripts/core/recall_learnings.py --query "authentication patterns")
+cd ~/.claude && PYTHONPATH=. uv run python scripts/core/recall_learnings.py --query "authentication patterns"
 
 # More results
-(cd $CLAUDE_2000_DIR && PYTHONPATH=. uv run python scripts/core/recall_learnings.py --query "error handling" --k 10)
+cd ~/.claude && PYTHONPATH=. uv run python scripts/core/recall_learnings.py --query "error handling" --k 10
 
 # Pure vector search (higher similarity scores, 0.4-0.6 range)
-(cd $CLAUDE_2000_DIR && PYTHONPATH=. uv run python scripts/core/recall_learnings.py --query "database schema" --vector-only)
+cd ~/.claude && PYTHONPATH=. uv run python scripts/core/recall_learnings.py --query "database schema" --vector-only
 
 # Text-only search (fast, no embeddings)
-(cd $CLAUDE_2000_DIR && PYTHONPATH=. uv run python scripts/core/recall_learnings.py --query "YAML format" --text-only)
+cd ~/.claude && PYTHONPATH=. uv run python scripts/core/recall_learnings.py --query "YAML format" --text-only
 ```
 
 ## Backend Architecture
 
 | Backend | Location | Status |
 |---------|----------|--------|
-| **PostgreSQL** (primary) | Via DATABASE_URL | Has 100+ real learnings with BGE embeddings |
+| **PostgreSQL** (primary) | Via ~/.claude/.env | Has 100+ real learnings with BGE embeddings |
 | SQLite (fallback) | ~/.claude/cache/memory.db | May be empty - don't rely on it |
 
 **DO NOT manually inspect databases** - just use the recall script. It auto-selects the correct backend.
@@ -78,7 +76,7 @@ Use recall to avoid repeating mistakes and leverage past successes.
 When you discover something worth remembering, store it:
 
 ```bash
-cd $CLAUDE_2000_DIR && PYTHONPATH=. uv run python scripts/core/store_learning.py \
+cd ~/.claude && PYTHONPATH=. uv run python scripts/core/store_learning.py \
   --session-id "<short-identifier>" \
   --type <TYPE> \
   --content "<what you learned>" \
@@ -86,8 +84,6 @@ cd $CLAUDE_2000_DIR && PYTHONPATH=. uv run python scripts/core/store_learning.py
   --tags "tag1,tag2,tag3" \
   --confidence high|medium|low
 ```
-
-**IMPORTANT:** Use `cd <absolute-path>` not `(cd opc && ...)` - the subshell form can cause path doubling errors.
 
 ### Learning Types
 
@@ -104,7 +100,7 @@ cd $CLAUDE_2000_DIR && PYTHONPATH=. uv run python scripts/core/store_learning.py
 ### Example
 
 ```bash
-cd $CLAUDE_2000_DIR && PYTHONPATH=. uv run python scripts/core/store_learning.py \
+cd ~/.claude && PYTHONPATH=. uv run python scripts/core/store_learning.py \
   --session-id "hook-debugging" \
   --type WORKING_SOLUTION \
   --content "TypeScript hooks require npm install in .claude/hooks/ before they work. The build.sh script compiles TS to JS in dist/." \
