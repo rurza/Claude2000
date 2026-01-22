@@ -122,17 +122,22 @@ async def initialize_embedded_postgres(pgdata: Path, venv_path: Path, schema_pat
         if proc.returncode != 0:
             return {"success": False, "error": f"initdb failed: {stderr.decode()}"}
 
-    # Configure postgres to use socket in pgdata directory
+    # Configure postgres to use socket in pgdata directory and non-standard port
+    # Port 5433 avoids conflicts with user's existing postgres on 5432
     postgresql_conf = pgdata / "postgresql.conf"
     if postgresql_conf.exists():
         conf_content = postgresql_conf.read_text()
+        config_additions = []
         if "unix_socket_directories" not in conf_content or f"'{pgdata}'" not in conf_content:
-            # Add or update unix_socket_directories
+            config_additions.append(f"unix_socket_directories = '{pgdata}'")
+        if "port = 5433" not in conf_content:
+            config_additions.append("port = 5433")
+        if config_additions:
             with open(postgresql_conf, "a") as f:
-                f.write(f"\n# Added by Claude2000 setup\nunix_socket_directories = '{pgdata}'\n")
+                f.write(f"\n# Added by Claude2000 setup\n" + "\n".join(config_additions) + "\n")
 
-    # Check if server is already running
-    socket_file = pgdata / ".s.PGSQL.5432"
+    # Check if server is already running (port 5433)
+    socket_file = pgdata / ".s.PGSQL.5433"
     if not socket_file.exists():
         # Start postgres
         logfile = pgdata / "logfile"
@@ -198,7 +203,7 @@ async def initialize_embedded_postgres(pgdata: Path, venv_path: Path, schema_pat
             warnings.append("Optional extension pg_trgm not available (ok)")
 
     # Final connection URI for continuous_claude database (use postgres user for portability)
-    final_uri = f"postgresql://postgres:@/continuous_claude?host={pgdata}"
+    final_uri = f"postgresql://postgres:@localhost:5433/continuous_claude"
 
     result = {"success": True, "uri": final_uri}
     if warnings:
@@ -471,7 +476,7 @@ def generate_database_url(config: dict[str, Any]) -> str:
 
     # Docker mode (default)
     host = config.get("host", "localhost")
-    port = config.get("port", 5432)
+    port = config.get("port", 5433)
     database = config.get("database", "continuous_claude")
     user = config.get("user", "claude")
     password = config.get("password", "")
@@ -501,7 +506,7 @@ def check_embedded_postgres_status() -> dict[str, Any]:
     if not pgdata.exists():
         return {"running": False, "reason": "pgdata directory not found"}
 
-    socket = pgdata / ".s.PGSQL.5432"
+    socket = pgdata / ".s.PGSQL.5433"
     if not socket.exists():
         return {"running": False, "reason": "socket file not found", "pgdata": pgdata}
 

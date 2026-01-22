@@ -611,6 +611,27 @@ async def run_setup_wizard() -> None:
                 config["database"] = db_config
                 generate_env_file(config, env_path)
                 console.print(f"  [green]OK[/green] Updated {env_path} with correct connection URI")
+
+                # Also update ~/.claude/settings.json with env var for hooks
+                # Hooks read CLAUDE2000_DB_URL from settings.json env section
+                settings_path = Path.home() / ".claude" / "settings.json"
+                try:
+                    settings = {}
+                    if settings_path.exists():
+                        settings = json.loads(settings_path.read_text())
+
+                    # Add/update env section with database URL
+                    if "env" not in settings:
+                        settings["env"] = {}
+                    settings["env"]["CLAUDE2000_DB_URL"] = result.get("uri", "")
+
+                    settings_path.parent.mkdir(parents=True, exist_ok=True)
+                    settings_path.write_text(json.dumps(settings, indent=2))
+                    console.print(f"  [green]OK[/green] Updated ~/.claude/settings.json with database URL for hooks")
+                except Exception as e:
+                    console.print(f"  [yellow]WARN[/yellow] Could not update settings.json: {e}")
+                    console.print(f"  [dim]Hooks may not connect to embedded postgres. Add manually:[/dim]")
+                    console.print(f'  [dim]"env": {{"CONTINUOUS_CLAUDE_DB_URL": "{result.get("uri", "")}"}}"[/dim]')
             else:
                 console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
                 console.print("  Falling back to SQLite mode")
