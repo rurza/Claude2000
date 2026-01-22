@@ -106,10 +106,10 @@ Make Claude2000 fully self-contained within `~/.claude/`. No custom environment 
 - [x] All hooks reference `~/.claude/` paths (verified)
 - [x] Shell scripts use `~/.claude/` or relative paths (verified)
 
-### Phase 4: Documentation Update
-- [ ] Update CLAUDE.md with new structure
-- [ ] Update all docs referencing old paths
-- [ ] Create migration guide for existing users
+### Phase 4: Documentation Update ✅ DONE
+- [x] Update CLAUDE.md with new structure
+- [x] Update all docs referencing old paths (DATABASE_URL → CLAUDE2000_DB_URL)
+- [ ] Create migration guide for existing users (optional - deferred)
 
 ---
 
