@@ -104,10 +104,13 @@ Options:
   - FAILED: Task abandoned or blocked
 ```
 
-After the user responds, mark the outcome:
+After the user responds, first index the handoff, then mark the outcome:
 ```bash
-# Mark the most recent handoff (PostgreSQL)
-source ~/.claude/claude2000/.venv/bin/activate && cd ~/.claude/claude2000 && PYTHONPATH=. python scripts/core/artifact_mark.py --latest --outcome <USER_CHOICE>
+# Index the handoff file (run from project directory where handoff was created)
+source ~/.claude/claude2000/.venv/bin/activate && PYTHONPATH=~/.claude/claude2000 python ~/.claude/claude2000/scripts/core/artifact_index.py --file <HANDOFF_FILE_PATH>
+
+# Mark the outcome
+source ~/.claude/claude2000/.venv/bin/activate && source ~/.claude/claude2000/.env && PYTHONPATH=~/.claude/claude2000 python ~/.claude/claude2000/scripts/core/artifact_mark.py --latest --outcome <USER_CHOICE>
 ```
 
 ### 4. Confirm completion
