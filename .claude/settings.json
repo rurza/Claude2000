@@ -1,7 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "uv run $HOME/.claude/scripts/status.py"
+    "command": "source $HOME/.claude/claude2000/.venv/bin/activate && python $HOME/.claude/claude2000/scripts/status.py"
   },
   "hooks": {
     "PreToolUse": [
