@@ -371,7 +371,7 @@ def run_update() -> None:
 
     pg_status = check_embedded_postgres_status()
     if pg_status["running"]:
-        schema_path = opc_dir.parent / "docker" / "init-schema.sql"
+        schema_path = opc_dir.parent / "schema" / "init-schema.sql"
         if schema_path.exists():
             result = apply_schema_if_needed(pg_status["pgdata"], schema_path)
             if result["success"]:

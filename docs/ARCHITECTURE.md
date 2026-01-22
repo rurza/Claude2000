@@ -282,12 +282,13 @@ from tldr.api import get_relevant_context, query, get_slice
 
 ### PostgreSQL + pgvector
 
-Schema in `docker/init-schema.sql`
+Schema in `schema/init-schema.sql`
 
 | Table | Purpose |
 |-------|---------|
 | `sessions` | Cross-terminal awareness and coordination |
 | `file_claims` | Cross-terminal file locking |
+| `core_memory` | Key-value blocks (persona, task, context) |
 | `archival_memory` | Long-term learnings with vector embeddings |
 | `handoffs` | Session handoffs with embeddings |
 

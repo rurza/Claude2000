@@ -587,8 +587,8 @@ async def run_setup_wizard() -> None:
 
             pgdata = Path(db_config.get("pgdata", ""))
             venv = Path(db_config.get("venv", ""))
-            # Path: wizard.py -> setup/ -> scripts/ -> opc/ -> Claude2000/docker/
-            schema_path = Path(__file__).parent.parent.parent.parent / "docker" / "init-schema.sql"
+            # Path: wizard.py -> setup/ -> scripts/ -> opc/ -> Claude2000/schema/
+            schema_path = Path(__file__).parent.parent.parent.parent / "schema" / "init-schema.sql"
 
             result = await initialize_embedded_postgres(pgdata, venv, schema_path)
             if result["success"]:

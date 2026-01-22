@@ -3,26 +3,26 @@
 ## Connection Details
 
 ```bash
-# Credentials (from opc/.env)
-DATABASE_URL=postgresql://claude:claude_dev@localhost:5432/continuous_claude
+# Connection via environment variable (embedded postgres on port 5433)
+# CLAUDE2000_DB_URL is set in ~/.claude/.env
 
-# Query via docker
-docker exec continuous-claude-postgres psql -U claude -d continuous_claude -c "SQL"
+# Query directly via psql
+psql "$CLAUDE2000_DB_URL" -c "SQL"
 ```
 
 ## Quick Queries
 
 ```bash
 # Active sessions (last 5 min)
-docker exec continuous-claude-postgres psql -U claude -d continuous_claude -c \
+psql "$CLAUDE2000_DB_URL" -c \
   "SELECT id, project, working_on, last_heartbeat FROM sessions WHERE last_heartbeat > NOW() - INTERVAL '5 minutes';"
 
 # All sessions
-docker exec continuous-claude-postgres psql -U claude -d continuous_claude -c \
+psql "$CLAUDE2000_DB_URL" -c \
   "SELECT id, project, working_on, last_heartbeat FROM sessions ORDER BY last_heartbeat DESC LIMIT 10;"
 
 # File claims
-docker exec continuous-claude-postgres psql -U claude -d continuous_claude -c \
+psql "$CLAUDE2000_DB_URL" -c \
   "SELECT file_path, session_id, claimed_at FROM file_claims ORDER BY claimed_at DESC LIMIT 10;"
 ```
 
@@ -38,3 +38,6 @@ docker exec continuous-claude-postgres psql -U claude -d continuous_claude -c \
 |-------|---------|
 | `sessions` | Cross-session awareness |
 | `file_claims` | File locking/conflict detection |
+| `core_memory` | Key-value blocks (persona, task, context) |
+| `archival_memory` | Long-term learnings with embeddings |
+| `handoffs` | Session handoffs and task completions |
