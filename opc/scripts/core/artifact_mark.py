@@ -1,222 +1,103 @@
 #!/usr/bin/env python3
+"""Mark handoff outcomes in PostgreSQL.
+
+Uses asyncpg via postgres_pool.py for async database access.
+NO SQLITE - PostgreSQL only.
+
+Usage:
+    python artifact_mark.py --handoff <id> --outcome SUCCEEDED
+    python artifact_mark.py --latest --outcome PARTIAL_PLUS
+    python artifact_mark.py --get-latest-id
 """
-USAGE: artifact_mark.py --handoff ID --outcome OUTCOME [--notes NOTES]
-       artifact_mark.py --latest --outcome OUTCOME [--notes NOTES]
-       artifact_mark.py --get-latest-id
 
-Mark a handoff with user outcome in the database (PostgreSQL or SQLite).
-
-Supports PostgreSQL (via CLAUDE2000_DB_URL set in ~/.claude/.env) with
-automatic fallback to SQLite for installations without PostgreSQL.
-
-Examples:
-    # Mark a specific handoff as succeeded
-    uv run python scripts/core/artifact_mark.py --handoff abc123 --outcome SUCCEEDED
-
-    # Mark the most recent handoff
-    uv run python scripts/core/artifact_mark.py --latest --outcome SUCCEEDED
-
-    # Just get the latest handoff ID (for scripts)
-    uv run python scripts/core/artifact_mark.py --get-latest-id
-
-    # Mark with additional notes
-    uv run python scripts/core/artifact_mark.py --latest --outcome PARTIAL_PLUS --notes "Almost done"
-"""
+from __future__ import annotations
 
 import argparse
+import asyncio
 import os
-import sqlite3
-from pathlib import Path
+import sys
 
-from dotenv import load_dotenv
-
-# Load .env files for CLAUDE2000_DB_URL (cross-platform)
-# 1. Global ~/.claude/.env
-global_env = Path.home() / ".claude" / ".env"
-if global_env.exists():
-    load_dotenv(global_env)
-
-# 2. Local opc/.env (relative to script location)
-opc_env = Path(__file__).parent.parent.parent / ".env"
-if opc_env.exists():
-    load_dotenv(opc_env, override=True)
+# Load environment from .env file
+try:
+    from dotenv import load_dotenv
+    env_path = os.path.expanduser("~/.claude/claude2000/.env")
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+    else:
+        # Also try ~/.claude/.env
+        env_path = os.path.expanduser("~/.claude/.env")
+        if os.path.exists(env_path):
+            load_dotenv(env_path)
+except ImportError:
+    pass  # dotenv not required if env vars already set
 
 
 def get_postgres_url() -> str | None:
-    """Get PostgreSQL URL from environment if available."""
+    """Get PostgreSQL URL from environment."""
     return os.environ.get("CLAUDE2000_DB_URL")
 
 
-def get_sqlite_path() -> Path:
-    """Get SQLite database path."""
-    return Path(".claude/cache/artifact-index/context.db")
+# =============================================================================
+# ASYNC POSTGRESQL OPERATIONS
+# =============================================================================
 
-
-def use_postgres() -> bool:
-    """Check if PostgreSQL should be used."""
-    url = get_postgres_url()
-    if not url:
-        return False
-    # Try to import psycopg2, fall back to SQLite if not available
-    try:
-        import psycopg2  # noqa: F401
-        return True
-    except ImportError:
-        return False
-
-
-# PostgreSQL operations
-def pg_connect():
-    """Connect to PostgreSQL."""
-    import psycopg2
-    return psycopg2.connect(get_postgres_url())
-
-
-def pg_get_latest_id() -> str | None:
+async def get_latest_id() -> str | None:
     """Get latest handoff ID from PostgreSQL."""
-    conn = pg_connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id::text FROM handoffs ORDER BY indexed_at DESC LIMIT 1")
-    row = cur.fetchone()
-    conn.close()
-    return row[0] if row else None
+    from scripts.core.db.postgres_pool import get_connection
+
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT id::text FROM handoffs ORDER BY indexed_at DESC LIMIT 1"
+        )
+        return row["id"] if row else None
 
 
-def pg_get_handoff(handoff_id: str) -> tuple | None:
+async def get_handoff(handoff_id: str) -> tuple | None:
     """Get handoff by ID from PostgreSQL."""
-    conn = pg_connect()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT id::text, session_name, goal FROM handoffs WHERE id::text LIKE %s",
-        (f"{handoff_id}%",)
-    )
-    row = cur.fetchone()
-    conn.close()
-    return row
+    from scripts.core.db.postgres_pool import get_connection
+
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT id::text, session_name, goal FROM handoffs WHERE id::text LIKE $1",
+            f"{handoff_id}%",
+        )
+        return (row["id"], row["session_name"], row["goal"]) if row else None
 
 
-def pg_update_outcome(handoff_id: str, outcome: str, notes: str) -> bool:
+async def update_outcome(handoff_id: str, outcome: str, notes: str) -> bool:
     """Update handoff outcome in PostgreSQL."""
-    conn = pg_connect()
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE handoffs SET outcome = %s, outcome_notes = %s WHERE id::text LIKE %s",
-        (outcome, notes, f"{handoff_id}%")
-    )
-    updated = cur.rowcount > 0
-    conn.commit()
-    conn.close()
-    return updated
+    from scripts.core.db.postgres_pool import get_connection
+
+    async with get_connection() as conn:
+        result = await conn.execute(
+            "UPDATE handoffs SET outcome = $1, outcome_notes = $2 WHERE id::text LIKE $3",
+            outcome,
+            notes,
+            f"{handoff_id}%",
+        )
+        # asyncpg returns "UPDATE N" where N is rows affected
+        return result != "UPDATE 0"
 
 
-def pg_list_recent() -> list:
+async def list_recent() -> list:
     """List recent handoffs from PostgreSQL."""
-    conn = pg_connect()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT id::text, session_name, goal FROM handoffs ORDER BY indexed_at DESC LIMIT 10"
-    )
-    rows = cur.fetchall()
-    conn.close()
-    return rows
+    from scripts.core.db.postgres_pool import get_connection
+
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            "SELECT id::text, session_name, goal FROM handoffs ORDER BY indexed_at DESC LIMIT 10"
+        )
+        return [(row["id"], row["session_name"], row["goal"]) for row in rows]
 
 
-# SQLite operations
-def sqlite_connect():
-    """Connect to SQLite."""
-    db_path = get_sqlite_path()
-    if not db_path.exists():
-        return None
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA busy_timeout = 5000")
-    return conn
+# =============================================================================
+# MAIN
+# =============================================================================
 
-
-def sqlite_get_latest_id() -> str | None:
-    """Get latest handoff ID from SQLite."""
-    conn = sqlite_connect()
-    if not conn:
-        return None
-    cursor = conn.execute("SELECT id FROM handoffs ORDER BY indexed_at DESC LIMIT 1")
-    row = cursor.fetchone()
-    conn.close()
-    return row[0] if row else None
-
-
-def sqlite_get_handoff(handoff_id: str) -> tuple | None:
-    """Get handoff by ID from SQLite."""
-    conn = sqlite_connect()
-    if not conn:
-        return None
-    cursor = conn.execute(
-        "SELECT id, session_name, task_summary FROM handoffs WHERE id = ? OR id LIKE ?",
-        (handoff_id, f"{handoff_id}%")
-    )
-    row = cursor.fetchone()
-    conn.close()
-    return row
-
-
-def sqlite_update_outcome(handoff_id: str, outcome: str, notes: str) -> bool:
-    """Update handoff outcome in SQLite."""
-    conn = sqlite_connect()
-    if not conn:
-        return False
-    cursor = conn.execute(
-        "UPDATE handoffs SET outcome = ?, outcome_notes = ?, confidence = 'HIGH' WHERE id = ? OR id LIKE ?",
-        (outcome, notes, handoff_id, f"{handoff_id}%")
-    )
-    updated = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
-    return updated
-
-
-def sqlite_list_recent() -> list:
-    """List recent handoffs from SQLite."""
-    conn = sqlite_connect()
-    if not conn:
-        return []
-    cursor = conn.execute(
-        "SELECT id, session_name, task_summary FROM handoffs ORDER BY indexed_at DESC LIMIT 10"
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
-
-
-# Unified interface
-def get_latest_id() -> str | None:
-    """Get latest handoff ID from database."""
-    if use_postgres():
-        return pg_get_latest_id()
-    return sqlite_get_latest_id()
-
-
-def get_handoff(handoff_id: str) -> tuple | None:
-    """Get handoff by ID."""
-    if use_postgres():
-        return pg_get_handoff(handoff_id)
-    return sqlite_get_handoff(handoff_id)
-
-
-def update_outcome(handoff_id: str, outcome: str, notes: str) -> bool:
-    """Update handoff outcome."""
-    if use_postgres():
-        return pg_update_outcome(handoff_id, outcome, notes)
-    return sqlite_update_outcome(handoff_id, outcome, notes)
-
-
-def list_recent() -> list:
-    """List recent handoffs."""
-    if use_postgres():
-        return pg_list_recent()
-    return sqlite_list_recent()
-
-
-def main():
+async def async_main() -> int:
+    """Async main function."""
     parser = argparse.ArgumentParser(
-        description="Mark handoff outcome (PostgreSQL or SQLite)",
+        description="Mark handoff outcome (PostgreSQL only)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -242,13 +123,19 @@ Examples:
 
     args = parser.parse_args()
 
+    # Check PostgreSQL URL is configured
+    if not get_postgres_url():
+        print("Error: CLAUDE2000_DB_URL not set", file=sys.stderr)
+        print("Run the wizard: cd ~/.claude && uv run python -m scripts.setup.wizard", file=sys.stderr)
+        return 1
+
     # Mode: get-latest-id
     if args.get_latest_id:
-        latest = get_latest_id()
+        latest = await get_latest_id()
         if latest:
             print(latest)
             return 0
-        print("No handoffs found", file=__import__("sys").stderr)
+        print("No handoffs found", file=sys.stderr)
         return 1
 
     # Mode: mark handoff
@@ -257,7 +144,7 @@ Examples:
 
     # Determine which handoff to mark
     if args.latest:
-        handoff_id = get_latest_id()
+        handoff_id = await get_latest_id()
         if not handoff_id:
             print("Error: No handoffs found in database")
             return 1
@@ -266,28 +153,25 @@ Examples:
     else:
         parser.error("Either --handoff ID or --latest is required")
 
-    # Check database availability
-    db_type = "PostgreSQL" if use_postgres() else "SQLite"
-
     # Check if handoff exists
-    handoff = get_handoff(handoff_id)
+    handoff = await get_handoff(handoff_id)
     if not handoff:
         print(f"Error: Handoff not found: {handoff_id}")
-        print(f"\nDatabase: {db_type}")
+        print("\nDatabase: PostgreSQL")
         print("\nAvailable handoffs:")
-        for row in list_recent():
+        for row in await list_recent():
             summary = row[2][:50] + "..." if row[2] and len(row[2]) > 50 else (row[2] or "(no summary)")
             print(f"  {row[0][:12]}: {row[1]} - {summary}")
         return 1
 
     # Update the handoff
-    if not update_outcome(handoff_id, args.outcome, args.notes):
+    if not await update_outcome(handoff_id, args.outcome, args.notes):
         print(f"Error: Failed to update handoff: {handoff_id}")
         return 1
 
     # Show confirmation
     print(f"✓ Marked handoff as {args.outcome}")
-    print(f"  Database: {db_type}")
+    print("  Database: PostgreSQL")
     print(f"  ID: {handoff[0]}")
     print(f"  Session: {handoff[1]}")
     if handoff[2]:
@@ -299,5 +183,10 @@ Examples:
     return 0
 
 
+def main() -> int:
+    """Entry point with asyncio.run() wrapper."""
+    return asyncio.run(async_main())
+
+
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())
