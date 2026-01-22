@@ -64,8 +64,8 @@ Make Claude2000 fully self-contained within `~/.claude/`. No custom environment 
 
 ### 2. No Custom Environment Variables Required
 - Remove `CLAUDE_CC_DIR` (DONE)
-- Remove `CLAUDE_2000_DIR` dependency from rules
-- Use `~/.claude/` paths directly everywhere
+- Remove `CLAUDE_2000_DIR` dependency from rules (DONE)
+- Use `~/.claude/` paths directly everywhere (DONE)
 
 ### 3. Default-First Installation
 - Installer uses sensible defaults
@@ -88,17 +88,17 @@ Make Claude2000 fully self-contained within `~/.claude/`. No custom environment 
 
 ## Action Items
 
-### Phase 1: Environment Variable Cleanup
-- [ ] Remove `$CLAUDE_2000_DIR` from all rules
-- [ ] Update `dynamic-recall.md` to use `~/.claude/` paths
-- [ ] Update any remaining skills with env var references
-- [ ] Search for and fix any `$CLAUDE_` references
+### Phase 1: Environment Variable Cleanup ✅ DONE
+- [x] Remove `$CLAUDE_2000_DIR` from all rules
+- [x] Update `dynamic-recall.md` to use `~/.claude/` paths
+- [x] Update any remaining skills with env var references
+- [x] Search for and fix any `$CLAUDE_` references
 
-### Phase 2: Installer Simplification
-- [ ] Refactor `wizard.py` to use defaults
-- [ ] Only prompt for: backup, mode, reindex frequency
-- [ ] Auto-install: embedded postgres, TLDR, local embeddings
-- [ ] Remove interactive prompts for feature toggles
+### Phase 2: Installer Simplification ✅ DONE
+- [x] Refactor `wizard.py` to use defaults
+- [x] Only prompt for: backup, mode, reindex frequency
+- [x] Auto-install: embedded postgres, TLDR, local embeddings
+- [x] Remove interactive prompts for feature toggles
 
 ### Phase 3: Path Standardization
 - [ ] All scripts use `~/.claude/` base path
@@ -156,11 +156,11 @@ Make Claude2000 fully self-contained within `~/.claude/`. No custom environment 
 
 ## Files Requiring Changes
 
-### High Priority
-1. `opc/scripts/setup/wizard.py` - Simplify to minimal prompts
-2. `.claude/rules/dynamic-recall.md` - Remove `$CLAUDE_2000_DIR`
-3. `.claude/rules/agent-memory-recall.md` - Remove env var
-4. Any remaining `$CLAUDE_` env var references
+### High Priority ✅ DONE
+1. ~~`opc/scripts/setup/wizard.py` - Simplify to minimal prompts~~
+2. ~~`.claude/rules/dynamic-recall.md` - Remove `$CLAUDE_2000_DIR`~~
+3. ~~`.claude/rules/agent-memory-recall.md` - Remove env var~~
+4. ~~Any remaining `$CLAUDE_` env var references~~
 
 ### Medium Priority
 1. `opc/scripts/setup/update.py` - Fix schema check (port 5432 vs 5433)
