@@ -26,7 +26,7 @@ def get_sqlite_path() -> Path:
 
 def get_postgres_url() -> str | None:
     """Check for PostgreSQL configuration (canonical first)."""
-    return os.environ.get("CONTINUOUS_CLAUDE_DB_URL") or os.environ.get("DATABASE_URL")
+    return os.environ.get("CLAUDE2000_DB_URL") or os.environ.get("DATABASE_URL")
 
 
 def search_sqlite(query: str, k: int = 5) -> list[dict[str, Any]]:
