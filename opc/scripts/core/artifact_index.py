@@ -227,18 +227,31 @@ def normalize_outcome(status: str) -> str:
 
 def parse_yaml_handoff(file_path: Path, raw_content: str) -> dict:
     """Parse a YAML handoff file into structured data."""
-    # Parse YAML content (skip frontmatter markers if present)
-    content = raw_content
-    if content.startswith("---"):
-        parts = content.split("---", 2)
+    # Parse YAML content - handle frontmatter + body format
+    # Format: ---\nfrontmatter\n---\nbody
+    data = {}
+    if raw_content.startswith("---"):
+        parts = raw_content.split("---", 2)
         if len(parts) >= 2:
-            # If there's content after second ---, use first YAML block
-            content = parts[1]
-
-    try:
-        data = yaml.safe_load(content) or {}
-    except yaml.YAMLError:
-        data = {}
+            # Parse frontmatter (metadata like session, date, status)
+            try:
+                frontmatter = yaml.safe_load(parts[1]) or {}
+                data.update(frontmatter)
+            except yaml.YAMLError:
+                pass
+            # Parse body (content like goal, context, learnings)
+            if len(parts) >= 3 and parts[2].strip():
+                try:
+                    body = yaml.safe_load(parts[2]) or {}
+                    data.update(body)
+                except yaml.YAMLError:
+                    pass
+    else:
+        # No frontmatter markers, parse entire content as YAML
+        try:
+            data = yaml.safe_load(raw_content) or {}
+        except yaml.YAMLError:
+            data = {}
 
     session_name, session_uuid = extract_session_info(file_path)
     file_id = hashlib.md5(str(file_path).encode()).hexdigest()[:12]
