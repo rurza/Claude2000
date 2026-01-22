@@ -1,5 +1,5 @@
 -- Continuous Claude Unified Schema
--- 5 tables: sessions, file_claims, core_memory, archival_memory, handoffs
+-- 4 tables: sessions, file_claims, archival_memory, handoffs
 
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -30,20 +30,6 @@ CREATE TABLE IF NOT EXISTS file_claims (
 -- =============================================================================
 -- MEMORY LAYER
 -- =============================================================================
-
--- Core Memory: Key-value blocks for fast reads (persona, task, context)
-CREATE TABLE IF NOT EXISTS core_memory (
-    session_id TEXT NOT NULL,
-    agent_id TEXT,
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Unique constraint on (session_id, agent_id, key) - handles NULL agent_id via COALESCE
-CREATE UNIQUE INDEX IF NOT EXISTS idx_core_memory_unique
-    ON core_memory(session_id, COALESCE(agent_id, ''), key);
-CREATE INDEX IF NOT EXISTS idx_core_memory_session ON core_memory(session_id);
 
 -- Archival Memory: Long-term learnings with embeddings
 CREATE TABLE IF NOT EXISTS archival_memory (
