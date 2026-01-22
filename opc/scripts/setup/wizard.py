@@ -587,7 +587,8 @@ async def run_setup_wizard() -> None:
 
             pgdata = Path(db_config.get("pgdata", ""))
             venv = Path(db_config.get("venv", ""))
-            schema_path = Path(__file__).parent.parent.parent / "docker" / "init-schema.sql"
+            # Path: wizard.py -> setup/ -> scripts/ -> opc/ -> Claude2000/docker/
+            schema_path = Path(__file__).parent.parent.parent.parent / "docker" / "init-schema.sql"
 
             result = await initialize_embedded_postgres(pgdata, venv, schema_path)
             if result["success"]:
@@ -595,6 +596,16 @@ async def run_setup_wizard() -> None:
                 if result.get("warnings"):
                     for warn in result["warnings"]:
                         console.print(f"  [dim]Note: {warn}[/dim]")
+
+                # Verify schema was applied
+                from scripts.setup.embedded_postgres import apply_schema_if_needed
+                verify = apply_schema_if_needed(pgdata, schema_path)
+                if verify["success"]:
+                    tables = verify.get("tables_after", 0)
+                    console.print(f"  [green]OK[/green] Schema verified ({tables} tables)")
+                else:
+                    console.print(f"  [yellow]WARN[/yellow] Schema verification: {verify.get('error', 'unknown')}")
+
                 # Update db_config with the actual URI and regenerate .env
                 db_config["uri"] = result.get("uri", "")
                 config["database"] = db_config
