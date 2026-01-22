@@ -138,17 +138,68 @@ async def initialize_embedded_postgres(pgdata: Path, venv_path: Path, schema_pat
 
     # Check if server is already running (port 5433)
     socket_file = pgdata / ".s.PGSQL.5433"
+    postmaster_pid = pgdata / "postmaster.pid"
+
+    # Clean up stale postmaster.pid if process is not running
+    if postmaster_pid.exists() and not socket_file.exists():
+        try:
+            pid_content = postmaster_pid.read_text().strip().split('\n')
+            if pid_content:
+                old_pid = int(pid_content[0])
+                # Check if process is actually running
+                try:
+                    os.kill(old_pid, 0)  # Signal 0 = check if process exists
+                    # Process exists - postgres might be starting up, wait a bit
+                    await asyncio.sleep(1)
+                except OSError:
+                    # Process doesn't exist - stale pid file
+                    warnings.append(f"Removed stale postmaster.pid (PID {old_pid} not running)")
+                    postmaster_pid.unlink()
+        except (ValueError, IndexError):
+            # Malformed pid file - remove it
+            warnings.append("Removed malformed postmaster.pid")
+            postmaster_pid.unlink()
+
     if not socket_file.exists():
-        # Start postgres
+        # Start postgres with retry logic for port-in-use scenarios
         logfile = pgdata / "logfile"
-        proc = await asyncio.create_subprocess_exec(
-            str(pg_ctl), "-D", str(pgdata), "-l", str(logfile), "start",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            return {"success": False, "error": f"pg_ctl start failed: {stderr.decode()}"}
+        max_retries = 5
+        retry_delay = 1.0  # seconds
+
+        for attempt in range(max_retries):
+            proc = await asyncio.create_subprocess_exec(
+                str(pg_ctl), "-D", str(pgdata), "-l", str(logfile), "start",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode == 0:
+                break
+
+            stderr_text = stderr.decode()
+            # Check if it's a port-in-use error (transient, can retry)
+            if "Address already in use" in stderr_text or "could not create any TCP/IP sockets" in stderr_text:
+                if attempt < max_retries - 1:
+                    warnings.append(f"Port 5433 in use, retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 1.5  # Exponential backoff
+                    # Clean up any partial state
+                    if postmaster_pid.exists():
+                        try:
+                            postmaster_pid.unlink()
+                        except OSError:
+                            pass
+                    continue
+                else:
+                    return {
+                        "success": False,
+                        "error": f"pg_ctl start failed after {max_retries} attempts: Port 5433 is in use. "
+                                 "Another postgres may be running, or a recent process hasn't released the port yet. "
+                                 "Try again in a few seconds or check: lsof -i :5433",
+                    }
+            else:
+                return {"success": False, "error": f"pg_ctl start failed: {stderr_text}"}
 
         # Wait for socket to appear
         for _ in range(30):  # 3 seconds max
@@ -164,7 +215,7 @@ async def initialize_embedded_postgres(pgdata: Path, venv_path: Path, schema_pat
     # Helper to run psql commands (initially as current OS user)
     async def run_psql(sql: str, database: str = "postgres", user: str = current_user) -> tuple[bool, str]:
         proc = await asyncio.create_subprocess_exec(
-            str(psql), "-h", str(pgdata), "-U", user, "-d", database, "-c", sql,
+            str(psql), "-h", str(pgdata), "-p", "5433", "-U", user, "-d", database, "-c", sql,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -189,7 +240,7 @@ async def initialize_embedded_postgres(pgdata: Path, venv_path: Path, schema_pat
     # Apply schema if provided
     if schema_path and schema_path.exists():
         proc = await asyncio.create_subprocess_exec(
-            str(psql), "-h", str(pgdata), "-U", current_user, "-d", "continuous_claude",
+            str(psql), "-h", str(pgdata), "-p", "5433", "-U", current_user, "-d", "continuous_claude",
             "-f", str(schema_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -550,7 +601,7 @@ def apply_schema_if_needed(pgdata: Path, schema_path: Path) -> dict[str, Any]:
     # Count tables before
     try:
         result = subprocess.run(
-            ["psql", "-h", str(pgdata), "-U", current_user, "-d", "continuous_claude",
+            ["psql", "-h", str(pgdata), "-p", "5433", "-U", current_user, "-d", "continuous_claude",
              "-t", "-c", "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';"],
             capture_output=True,
             text=True,
@@ -562,7 +613,7 @@ def apply_schema_if_needed(pgdata: Path, schema_path: Path) -> dict[str, Any]:
 
     # Apply schema
     result = subprocess.run(
-        ["psql", "-h", str(pgdata), "-U", current_user, "-d", "continuous_claude",
+        ["psql", "-h", str(pgdata), "-p", "5433", "-U", current_user, "-d", "continuous_claude",
          "-f", str(schema_path)],
         capture_output=True,
         text=True,
@@ -586,7 +637,7 @@ def apply_schema_if_needed(pgdata: Path, schema_path: Path) -> dict[str, Any]:
     # Count tables after
     try:
         result = subprocess.run(
-            ["psql", "-h", str(pgdata), "-U", current_user, "-d", "continuous_claude",
+            ["psql", "-h", str(pgdata), "-p", "5433", "-U", current_user, "-d", "continuous_claude",
              "-t", "-c", "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';"],
             capture_output=True,
             text=True,

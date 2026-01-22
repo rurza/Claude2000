@@ -35,8 +35,10 @@ try:
     from rich.markup import escape as rich_escape
     from rich.panel import Panel
     from rich.prompt import Confirm, Prompt
+    from rich.status import Status
 
-    console = Console()
+    # Force terminal mode to enable spinners even when run via `uv run`
+    console = Console(force_terminal=True)
 except ImportError:
     import re
     rich_escape = lambda x: x  # No escaping needed without Rich
@@ -48,10 +50,21 @@ except ImportError:
         return re.sub(r'\[/?[a-z_ ]+\]', '', text, flags=re.IGNORECASE)
 
     # Fallback for minimal environments
+    from contextlib import contextmanager
+
     class Console:
         def print(self, *args, **kwargs):
             stripped = [_strip_rich_markup(str(a)) for a in args]
             print(*stripped)
+
+        @contextmanager
+        def status(self, message, spinner=None):
+            """Fallback status context manager - just prints the message."""
+            print(_strip_rich_markup(message))
+            try:
+                yield
+            finally:
+                pass
 
     class Panel:
         @staticmethod
@@ -79,6 +92,10 @@ except ImportError:
             return response if response else default
 
     console = Console()
+
+
+# Module-level restore function, set by run_setup_wizard after backup is created
+_restore_on_failure = None
 
 
 # =============================================================================
@@ -485,9 +502,7 @@ async def run_setup_wizard() -> None:
     - TLDR code analysis tool
     - Semantic search enabled
     """
-    console.print(
-        Panel.fit("[bold]CLAUDE2000 - SETUP WIZARD[/bold]", border_style="blue")
-    )
+    console.print("\n[bold]                              Setup Wizard[/bold]\n")
 
     from scripts.setup.claude_integration import (
         backup_global_claude_dir,
@@ -500,15 +515,15 @@ async def run_setup_wizard() -> None:
 
     global_claude = get_global_claude_dir()
 
-    # === PROMPT 1: Backup existing? ===
+    # === PROMPT 1: Fresh install or update? (if existing) ===
+    install_type = "fresh"
+    should_backup = False
     if global_claude.exists():
         console.print("\n[bold]Existing ~/.claude found[/bold]")
-        if Confirm.ask("Create backup before proceeding?", default=True):
-            backup_path = backup_global_claude_dir()
-            if backup_path:
-                console.print(f"  [green]OK[/green] Backed up to {backup_path.name}")
-            else:
-                console.print("  [yellow]WARN[/yellow] Could not create backup")
+        install_type = Prompt.ask("Install type", choices=["update", "fresh"], default="update")
+        if install_type == "fresh":
+            console.print("  [dim]Fresh install will replace existing configuration[/dim]")
+        should_backup = Confirm.ask("Create backup before proceeding?", default=True)
     else:
         console.print("\n[dim]No existing ~/.claude found (clean install)[/dim]")
 
@@ -526,6 +541,97 @@ async def run_setup_wizard() -> None:
         reindex_threshold = int(threshold_str)
     except ValueError:
         reindex_threshold = 20
+
+    # === BACKUP: Create backup BEFORE any setup operations ===
+    backup_path: Path | None = None
+    if should_backup:
+        console.print("\n[bold]Creating backup...[/bold]")
+        backup_path = backup_global_claude_dir()
+        if backup_path:
+            console.print(f"  [green]OK[/green] Backed up to {backup_path.name}")
+        else:
+            console.print("  [yellow]WARN[/yellow] Could not create backup")
+
+    # Define restore function early so it's available for all failure paths
+    def restore_on_failure(error_msg: str) -> None:
+        """On hard failure, rename .claude-failed-{date} and restore backup."""
+        from datetime import datetime
+        console.print(f"\n[red]FATAL ERROR:[/red] {error_msg}")
+
+        if global_claude.exists():
+            failed_name = f".claude-failed-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            failed_path = global_claude.parent / failed_name
+            try:
+                global_claude.rename(failed_path)
+                console.print(f"  [yellow]Renamed failed installation to {failed_name}[/yellow]")
+            except Exception as e:
+                console.print(f"  [red]Could not rename failed installation: {e}[/red]")
+
+        if backup_path and backup_path.exists():
+            try:
+                import shutil
+                shutil.copytree(backup_path, global_claude)
+                console.print(f"  [green]Restored backup from {backup_path.name}[/green]")
+            except Exception as e:
+                console.print(f"  [red]Could not restore backup: {e}[/red]")
+                console.print(f"  [dim]Manual restore: cp -r {backup_path} {global_claude}[/dim]")
+
+    # Store restore function in module scope so main() can access it on exception
+    global _restore_on_failure
+    _restore_on_failure = restore_on_failure
+
+    # === FRESH INSTALL: Wipe ~/.claude entirely ===
+    if install_type == "fresh" and global_claude.exists():
+        console.print("\n[bold]Wiping existing ~/.claude for fresh install...[/bold]")
+
+        # Kill all Claude Code processes first (they hold files open in ~/.claude)
+        import subprocess
+        try:
+            # Find and kill all 'claude' processes
+            result = subprocess.run(
+                ["pgrep", "-x", "claude"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                pids = result.stdout.strip().split('\n')
+                console.print(f"  Killing {len(pids)} Claude process(es)...")
+                for pid in pids:
+                    if pid:
+                        subprocess.run(["kill", "-9", pid], capture_output=True)
+                console.print("  [green]OK[/green] Claude processes terminated")
+                # Brief pause to let file handles release
+                import time
+                time.sleep(0.5)
+        except Exception as e:
+            console.print(f"  [dim]Could not kill Claude processes: {e}[/dim]")
+
+        # Stop postgres if running
+        pgdata = global_claude / "pgdata"
+        pg_venv = global_claude / "pgserver-venv"
+        if pgdata.exists() and pg_venv.exists():
+            pg_ctl = pg_venv / "bin" / "pg_ctl"
+            if pg_ctl.exists():
+                console.print("  Stopping PostgreSQL...")
+                import subprocess
+                try:
+                    subprocess.run(
+                        [str(pg_ctl), "stop", "-D", str(pgdata), "-m", "fast"],
+                        capture_output=True,
+                        timeout=10
+                    )
+                    console.print("  [green]OK[/green] PostgreSQL stopped")
+                except Exception as e:
+                    console.print(f"  [dim]PostgreSQL stop: {e}[/dim]")
+
+        # Remove ~/.claude entirely
+        import shutil
+        try:
+            shutil.rmtree(global_claude)
+            console.print("  [green]OK[/green] Removed ~/.claude")
+        except Exception as e:
+            restore_on_failure(f"Could not remove ~/.claude: {e}")
+            sys.exit(1)
 
     # === AUTO: Check prerequisites ===
     console.print("\n[bold]Checking prerequisites...[/bold]")
@@ -550,15 +656,14 @@ async def run_setup_wizard() -> None:
     # === AUTO: Database (embedded postgres) ===
     console.print("\n[bold]Setting up embedded PostgreSQL...[/bold]")
     from scripts.setup.embedded_postgres import setup_embedded_environment
-    embed_result = await setup_embedded_environment()
+    with console.status("[cyan]Setting up PostgreSQL environment...[/cyan]", spinner="dots"):
+        embed_result = await setup_embedded_environment()
     if embed_result["success"]:
         console.print(f"  [green]OK[/green] Environment ready at {embed_result['venv']}")
         db_config = {"mode": "embedded", "pgdata": str(embed_result["pgdata"]), "venv": str(embed_result["venv"])}
-        db_mode = "embedded"
     else:
-        console.print(f"  [yellow]WARN[/yellow] {embed_result.get('error', 'Unknown')}, falling back to SQLite")
-        db_config = {"mode": "sqlite"}
-        db_mode = "sqlite"
+        restore_on_failure(f"PostgreSQL setup failed: {embed_result.get('error', 'Unknown')}")
+        sys.exit(1)
 
     # === AUTO: Embeddings (local) ===
     embeddings = {"provider": "local"}
@@ -572,70 +677,63 @@ async def run_setup_wizard() -> None:
 
     # === AUTO: Database Setup ===
     console.print("\n[bold]Initializing database...[/bold]")
-    if db_mode == "embedded":
-        console.print("  Initializing embedded PostgreSQL (this may take a moment)...")
-        try:
-            from scripts.setup.embedded_postgres import initialize_embedded_postgres
+    try:
+        from scripts.setup.embedded_postgres import initialize_embedded_postgres
 
-            pgdata = Path(db_config.get("pgdata", ""))
-            venv = Path(db_config.get("venv", ""))
-            # Path: wizard.py -> setup/ -> scripts/ -> opc/ -> Claude2000/schema/
-            schema_path = Path(__file__).parent.parent.parent.parent / "schema" / "init-schema.sql"
+        pgdata = Path(db_config.get("pgdata", ""))
+        venv = Path(db_config.get("venv", ""))
+        # Path: wizard.py -> setup/ -> scripts/ -> opc/ -> Claude2000/schema/
+        schema_path = Path(__file__).parent.parent.parent.parent / "schema" / "init-schema.sql"
 
+        with console.status("[cyan]Starting PostgreSQL and applying schema...[/cyan]", spinner="dots"):
             result = await initialize_embedded_postgres(pgdata, venv, schema_path)
-            if result["success"]:
-                console.print("  [green]OK[/green] Embedded PostgreSQL initialized")
-                if result.get("warnings"):
-                    for warn in result["warnings"]:
-                        console.print(f"  [dim]Note: {warn}[/dim]")
+        if result["success"]:
+            console.print("  [green]OK[/green] Embedded PostgreSQL initialized")
+            if result.get("warnings"):
+                for warn in result["warnings"]:
+                    console.print(f"  [dim]Note: {warn}[/dim]")
 
-                # Verify schema was applied
-                from scripts.setup.embedded_postgres import apply_schema_if_needed
-                verify = apply_schema_if_needed(pgdata, schema_path)
-                if verify["success"]:
-                    tables = verify.get("tables_after", 0)
-                    console.print(f"  [green]OK[/green] Schema verified ({tables} tables)")
-                else:
-                    console.print(f"  [yellow]WARN[/yellow] Schema verification: {verify.get('error', 'unknown')}")
-
-                # Update db_config with the actual URI and regenerate .env
-                db_config["uri"] = result.get("uri", "")
-                config["database"] = db_config
-                generate_env_file(config, env_path)
-                console.print(f"  [green]OK[/green] Updated {env_path} with correct connection URI")
-
-                # Also update ~/.claude/settings.json with env var for hooks
-                # Hooks read CLAUDE2000_DB_URL from settings.json env section
-                settings_path = Path.home() / ".claude" / "settings.json"
-                try:
-                    settings = {}
-                    if settings_path.exists():
-                        settings = json.loads(settings_path.read_text())
-
-                    # Add/update env section with database URL
-                    if "env" not in settings:
-                        settings["env"] = {}
-                    settings["env"]["CLAUDE2000_DB_URL"] = result.get("uri", "")
-
-                    settings_path.parent.mkdir(parents=True, exist_ok=True)
-                    settings_path.write_text(json.dumps(settings, indent=2))
-                    console.print(f"  [green]OK[/green] Updated ~/.claude/settings.json with database URL for hooks")
-                except Exception as e:
-                    console.print(f"  [yellow]WARN[/yellow] Could not update settings.json: {e}")
-                    console.print(f"  [dim]Hooks may not connect to embedded postgres. Add manually:[/dim]")
-                    console.print(f'  [dim]"env": {{"CLAUDE2000_DB_URL": "{result.get("uri", "")}"}}"[/dim]')
+            # Verify schema was applied
+            from scripts.setup.embedded_postgres import apply_schema_if_needed
+            verify = apply_schema_if_needed(pgdata, schema_path)
+            if verify["success"]:
+                tables = verify.get("tables_after", 0)
+                console.print(f"  [green]OK[/green] Schema verified ({tables} tables)")
             else:
-                console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
-                console.print("  Falling back to SQLite mode")
-                db_mode = "sqlite"
-                db_config = {"mode": "sqlite"}
-        except Exception as e:
-            console.print(f"  [red]ERROR[/red] Could not initialize embedded postgres: {e}")
-            console.print("  Falling back to SQLite mode")
-            db_mode = "sqlite"
-            db_config = {"mode": "sqlite"}
-    elif db_mode == "sqlite":
-        console.print("  [dim]SQLite mode - no migrations needed[/dim]")
+                console.print(f"  [yellow]WARN[/yellow] Schema verification: {verify.get('error', 'unknown')}")
+
+            # Update db_config with the actual URI and regenerate .env
+            db_config["uri"] = result.get("uri", "")
+            config["database"] = db_config
+            generate_env_file(config, env_path)
+            console.print(f"  [green]OK[/green] Updated {env_path} with correct connection URI")
+
+            # Also update ~/.claude/settings.json with env var for hooks
+            # Hooks read CLAUDE2000_DB_URL from settings.json env section
+            settings_path = Path.home() / ".claude" / "settings.json"
+            try:
+                settings = {}
+                if settings_path.exists():
+                    settings = json.loads(settings_path.read_text())
+
+                # Add/update env section with database URL
+                if "env" not in settings:
+                    settings["env"] = {}
+                settings["env"]["CLAUDE2000_DB_URL"] = result.get("uri", "")
+
+                settings_path.parent.mkdir(parents=True, exist_ok=True)
+                settings_path.write_text(json.dumps(settings, indent=2))
+                console.print(f"  [green]OK[/green] Updated ~/.claude/settings.json with database URL for hooks")
+            except Exception as e:
+                console.print(f"  [yellow]WARN[/yellow] Could not update settings.json: {e}")
+                console.print(f"  [dim]Hooks may not connect to embedded postgres. Add manually:[/dim]")
+                console.print(f'  [dim]"env": {{"CLAUDE2000_DB_URL": "{result.get("uri", "")}"}}"[/dim]')
+        else:
+            restore_on_failure(f"PostgreSQL init failed: {result.get('error', 'Unknown error')}")
+            sys.exit(1)
+    except Exception as e:
+        restore_on_failure(f"PostgreSQL init exception: {e}")
+        sys.exit(1)
 
     # === AUTO: Claude Code Integration (using install_mode from prompt) ===
     console.print("\n[bold]Installing Claude Code integration...[/bold]")
@@ -643,13 +741,15 @@ async def run_setup_wizard() -> None:
     opc_source = get_opc_integration_source()
 
     if install_mode == "symlink":
-        result = install_opc_integration_symlink(claude_dir, opc_source)
+        with console.status("[cyan]Creating symlinks...[/cyan]", spinner="dots"):
+            result = install_opc_integration_symlink(claude_dir, opc_source)
         if result["success"]:
             console.print(f"  [green]OK[/green] Symlinked: {', '.join(result['symlinked_dirs'])}")
         else:
             console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
     else:  # copy mode
-        result = install_opc_integration(claude_dir, opc_source)
+        with console.status("[cyan]Copying hooks, skills, rules, agents...[/cyan]", spinner="dots"):
+            result = install_opc_integration(claude_dir, opc_source)
         if result["success"]:
             console.print(f"  [green]OK[/green] Installed {result['installed_hooks']} hooks")
             console.print(f"  [green]OK[/green] Installed {result['installed_skills']} skills")
@@ -659,9 +759,9 @@ async def run_setup_wizard() -> None:
             console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
 
     # Build TypeScript hooks
-    console.print("  Building TypeScript hooks...")
     hooks_dir = claude_dir / "hooks"
-    build_success, build_msg = build_typescript_hooks(hooks_dir)
+    with console.status("[cyan]Building TypeScript hooks...[/cyan]", spinner="dots"):
+        build_success, build_msg = build_typescript_hooks(hooks_dir)
     if build_success:
         console.print(f"  [green]OK[/green] {build_msg}")
     else:
@@ -672,12 +772,13 @@ async def run_setup_wizard() -> None:
     import subprocess
 
     try:
-        result = subprocess.run(
-            ["uv", "tool", "install", "llm-tldr"],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
+        with console.status("[cyan]Installing TLDR via uv...[/cyan]", spinner="dots"):
+            result = subprocess.run(
+                ["uv", "tool", "install", "llm-tldr"],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
         if result.returncode == 0:
             console.print("  [green]OK[/green] TLDR installed")
         else:
@@ -750,22 +851,21 @@ async def run_setup_wizard() -> None:
             console.print(f"  [green]OK[/green] Copied .env configuration")
 
         # Create Python virtual environment with required dependencies
-        console.print("  Creating Python virtual environment...")
         venv_path = install_dir / ".venv"
         try:
             import subprocess
             # Create venv using uv
-            result = subprocess.run(
-                ["uv", "venv", str(venv_path)],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
+            with console.status("[cyan]Creating Python virtual environment...[/cyan]", spinner="dots"):
+                result = subprocess.run(
+                    ["uv", "venv", str(venv_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
             if result.returncode == 0:
                 console.print(f"  [green]OK[/green] Created venv at {venv_path}")
 
                 # Install minimal dependencies for memory scripts
-                console.print("  Installing dependencies (this may take a minute)...")
                 deps = [
                     "python-dotenv",
                     "asyncpg",
@@ -773,12 +873,13 @@ async def run_setup_wizard() -> None:
                     "sentence-transformers",
                     "httpx",  # For HTTP requests in embedding service
                 ]
-                pip_result = subprocess.run(
-                    ["uv", "pip", "install", "--python", str(venv_path / "bin" / "python")] + deps,
-                    capture_output=True,
-                    text=True,
-                    timeout=300,  # 5 minutes for sentence-transformers
-                )
+                with console.status("[cyan]Installing dependencies (this may take a minute)...[/cyan]", spinner="dots"):
+                    pip_result = subprocess.run(
+                        ["uv", "pip", "install", "--python", str(venv_path / "bin" / "python")] + deps,
+                        capture_output=True,
+                        text=True,
+                        timeout=300,  # 5 minutes for sentence-transformers
+                    )
                 if pip_result.returncode == 0:
                     console.print(f"  [green]OK[/green] Installed dependencies")
                 else:
@@ -880,10 +981,16 @@ async def main():
 
     # Show menu if no args
     if len(sys.argv) == 1:
-        console.print(
-            Panel.fit("[bold]CLAUDE2000[/bold]", border_style="blue")
-        )
-        console.print("\n[bold]Options:[/bold]")
+        ascii_banner = r"""
+ ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗██████╗  ██████╗  ██████╗  ██████╗
+██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝╚════██╗██╔═████╗██╔═████╗██╔═████╗
+██║     ██║     ███████║██║   ██║██║  ██║█████╗   █████╔╝██║██╔██║██║██╔██║██║██╔██║
+██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝  ██╔═══╝ ████╔╝██║████╔╝██║████╔╝██║
+╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗███████╗╚██████╔╝╚██████╔╝╚██████╔╝
+ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚══════╝ ╚═════╝  ╚═════╝  ╚═════╝
+        """
+        console.print(f"[bold cyan]{ascii_banner}[/bold cyan]")
+        console.print("[bold]Options:[/bold]")
         console.print("  [bold]1[/bold] - Install / Update")
         console.print("  [bold]2[/bold] - Uninstall (restore backup)")
         console.print("  [bold]q[/bold] - Quit")
@@ -902,9 +1009,13 @@ async def main():
         await run_setup_wizard()
     except KeyboardInterrupt:
         console.print("\n\n[yellow]Setup cancelled.[/yellow]")
+        if _restore_on_failure:
+            _restore_on_failure("Setup cancelled by user")
         sys.exit(130)
     except Exception as e:
         console.print(f"\n[red]Error: {rich_escape(str(e))}[/red]")
+        if _restore_on_failure:
+            _restore_on_failure(str(e))
         sys.exit(1)
 
 

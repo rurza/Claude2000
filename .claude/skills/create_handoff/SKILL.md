@@ -106,11 +106,11 @@ Options:
 
 After the user responds, mark the outcome:
 ```bash
-# Mark the most recent handoff (works with PostgreSQL or SQLite)
-cd ~/.claude && uv run python scripts/core/artifact_mark.py --latest --outcome <USER_CHOICE>
+# Mark the most recent handoff (PostgreSQL)
+source ~/.claude/claude2000/.venv/bin/activate && cd ~/.claude/claude2000 && PYTHONPATH=. python scripts/core/artifact_mark.py --latest --outcome <USER_CHOICE>
 ```
 
-This command auto-detects the database (PostgreSQL if configured, SQLite fallback).
+This command uses the PostgreSQL database configured via CLAUDE2000_DB_URL.
 
 ### 4. Confirm completion
 

@@ -41,7 +41,7 @@ ls thoughts/ledgers/CONTINUITY_CLAUDE-*.md 2>/dev/null | head -1 | sed 's/.*CONT
 ls -d thoughts/shared/handoffs/*/ 2>/dev/null | head -1 | xargs basename
 
 # Git metadata via spec_metadata.sh
-~/.claude/scripts/spec_metadata.sh
+~/.claude/claude2000/scripts/spec_metadata.sh
 
 # Braintrust IDs (if available)
 cat ~/.claude/state/braintrust_sessions/*.json | jq -s 'sort_by(.started) | last'

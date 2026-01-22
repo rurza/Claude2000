@@ -63,6 +63,47 @@ class ConflictReport:
         )
 
 
+# Keys in settings.json that should be preserved from existing user config
+_USER_SETTINGS_KEYS = {"env", "mcpServers", "attribution"}
+
+
+def _merge_settings_json(source_path: Path, target_path: Path) -> None:
+    """Merge settings.json, preserving user-specific settings.
+
+    Copies the source settings to target, but preserves these user-specific
+    keys from the existing target file if they exist:
+    - env: Environment variables (including CLAUDE2000_DB_URL)
+    - mcpServers: User's MCP server configurations
+    - attribution: User's attribution settings
+
+    Args:
+        source_path: Path to source settings.json (from OPC)
+        target_path: Path to target settings.json (in ~/.claude/)
+    """
+    if not source_path.exists():
+        return
+
+    # Load new settings from source
+    new_settings = json.loads(source_path.read_text())
+
+    # Load existing settings if they exist
+    existing_settings: dict[str, Any] = {}
+    if target_path.exists():
+        try:
+            existing_settings = json.loads(target_path.read_text())
+        except json.JSONDecodeError:
+            pass  # Ignore corrupt settings, will be overwritten
+
+    # Preserve user-specific keys from existing settings
+    for key in _USER_SETTINGS_KEYS:
+        if key in existing_settings:
+            new_settings[key] = existing_settings[key]
+
+    # Write merged settings
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(json.dumps(new_settings, indent=2))
+
+
 def get_claude_dir(project_dir: Path | None = None) -> Path:
     """Get the .claude directory path.
 
@@ -267,6 +308,8 @@ def backup_global_claude_dir() -> Path | None:
     Returns:
         Path to backup directory, or None if nothing to backup
     """
+    import stat
+
     global_dir = get_global_claude_dir()
     if not global_dir.exists():
         return None
@@ -274,7 +317,19 @@ def backup_global_claude_dir() -> Path | None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = global_dir.parent / f".claude.backup.{timestamp}"
 
-    shutil.copytree(global_dir, backup_path)
+    def ignore_sockets(directory: str, files: list[str]) -> list[str]:
+        """Ignore socket files during copy (postgres .s.PGSQL.* files)."""
+        ignored = []
+        for f in files:
+            filepath = Path(directory) / f
+            try:
+                if filepath.exists() and stat.S_ISSOCK(filepath.stat().st_mode):
+                    ignored.append(f)
+            except OSError:
+                pass
+        return ignored
+
+    shutil.copytree(global_dir, backup_path, ignore=ignore_sockets)
 
     return backup_path
 
@@ -391,6 +446,20 @@ ROOT_SCRIPTS = [
     "recall_temporal_facts.py",  # /system_overview skill
 ]
 
+# Scripts from .claude/scripts/ (shell scripts for reasoning, status, etc.)
+CLAUDE_SCRIPTS = [
+    "agent-animation.sh",        # Agent animation display
+    "aggregate-reasoning.sh",    # Aggregate reasoning from sessions
+    "generate-reasoning.sh",     # Generate reasoning summaries
+    "get-resources.sh",          # Get resource info
+    "phase-progress-status.sh",  # Phase progress display
+    "recall_learnings.py",       # Recall learnings (wrapper)
+    "search-reasoning.sh",       # Search reasoning history
+    "status.py",                 # Status display (Python)
+    "status.sh",                 # Status display (shell)
+    "tldr_stats.py",             # TLDR statistics
+]
+
 
 def _copy_scripts(opc_source: Path, target_dir: Path) -> int:
     """Copy script directories and root scripts to target.
@@ -418,7 +487,7 @@ def _copy_scripts(opc_source: Path, target_dir: Path) -> int:
             shutil.copytree(src, dst)
             count += len(list(dst.rglob("*.py")))
 
-    # Copy individual root scripts
+    # Copy individual root scripts from opc/scripts/
     scripts_root = opc_source.parent / "opc" / "scripts"
     target_scripts = target_dir / "scripts"
     target_scripts.mkdir(parents=True, exist_ok=True)
@@ -427,6 +496,15 @@ def _copy_scripts(opc_source: Path, target_dir: Path) -> int:
         if src.exists():
             shutil.copy2(src, target_scripts / script_name)
             count += 1
+
+    # Copy scripts from .claude/scripts/ (shell scripts for skills)
+    claude_scripts_dir = opc_source / "scripts"
+    if claude_scripts_dir.exists():
+        for script_name in CLAUDE_SCRIPTS:
+            src = claude_scripts_dir / script_name
+            if src.exists():
+                shutil.copy2(src, target_scripts / script_name)
+                count += 1
 
     return count
 
@@ -565,14 +643,15 @@ def install_opc_integration(
                 shutil.rmtree(target_runtime)
             shutil.copytree(opc_runtime, target_runtime)
 
-        # Copy settings.json
+        # Merge settings.json (preserves user's env, mcpServers, attribution)
         opc_settings_path = opc_source / "settings.json"
         target_settings_path = target_dir / "settings.json"
-        if opc_settings_path.exists():
-            shutil.copy2(opc_settings_path, target_settings_path)
+        _merge_settings_json(opc_settings_path, target_settings_path)
 
-        # Copy scripts (core, math, tldr directories + root scripts)
-        result["installed_scripts"] = _copy_scripts(opc_source, target_dir)
+        # NOTE: Scripts are installed by wizard.py to ~/.claude/claude2000/scripts/
+        # with a dedicated venv. Don't duplicate to ~/.claude/scripts/.
+        # result["installed_scripts"] = _copy_scripts(opc_source, target_dir)
+        result["installed_scripts"] = 0
 
         # Merge user items if requested
         if merge_user_items and existing and conflicts:
@@ -686,11 +765,10 @@ def install_opc_integration_symlink(
                     return result
                 raise
 
-        # Copy (not symlink) settings.json - user may want to customize
+        # Merge settings.json (preserves user's env, mcpServers, attribution)
         opc_settings_path = opc_source / "settings.json"
         target_settings_path = target_dir / "settings.json"
-        if opc_settings_path.exists():
-            shutil.copy2(opc_settings_path, target_settings_path)
+        _merge_settings_json(opc_settings_path, target_settings_path)
 
         # Copy servers, runtime, plugins, scripts (these are less likely to be edited)
         # Users can manually symlink these if needed
@@ -702,8 +780,9 @@ def install_opc_integration_symlink(
                     shutil.rmtree(dst)
                 shutil.copytree(src, dst)
 
-        # Copy scripts (core, math, tldr directories + root scripts)
-        _copy_scripts(opc_source, target_dir)
+        # NOTE: Scripts are installed by wizard.py to ~/.claude/claude2000/scripts/
+        # with a dedicated venv. Don't duplicate to ~/.claude/scripts/.
+        # _copy_scripts(opc_source, target_dir)
 
         result["success"] = True
 

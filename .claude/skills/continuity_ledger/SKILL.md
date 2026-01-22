@@ -106,8 +106,8 @@ Options:
 
 After the user responds, mark the outcome:
 ```bash
-# Mark the most recent handoff (works with PostgreSQL or SQLite)
-cd ~/.claude && uv run python scripts/core/artifact_mark.py --latest --outcome <USER_CHOICE>
+# Mark the most recent handoff (PostgreSQL)
+source ~/.claude/claude2000/.venv/bin/activate && cd ~/.claude/claude2000 && PYTHONPATH=. python scripts/core/artifact_mark.py --latest --outcome <USER_CHOICE>
 ```
 
 ### 4. Confirm completion

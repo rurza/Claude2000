@@ -50,7 +50,7 @@ Or with explicit type:
 When this skill is invoked, run:
 
 ```bash
-cd ~/.claude && PYTHONPATH=. uv run python scripts/core/store_learning.py \
+source ~/.claude/claude2000/.venv/bin/activate && cd ~/.claude/claude2000 && PYTHONPATH=. python scripts/core/store_learning.py \
   --session-id "manual-$(date +%Y%m%d-%H%M)" \
   --type <TYPE or WORKING_SOLUTION> \
   --content "<ARGS>" \
