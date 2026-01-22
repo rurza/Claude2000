@@ -472,40 +472,63 @@ def generate_env_file(config: dict[str, Any], env_path: Path) -> None:
 
 
 async def run_setup_wizard() -> None:
-    """Run the interactive setup wizard.
+    """Run the setup wizard with sensible defaults.
 
-    Orchestrates the full setup flow:
-    1. Check prerequisites
-    2. Prompt for database config
-    3. Prompt for API keys
-    4. Generate .env file
-    5. Start Docker stack
-    6. Run migrations
-    7. Install Claude Code integration (hooks, skills, rules)
+    Minimal prompts:
+    1. Backup existing? (if exists)
+    2. Installation mode? (copy/symlink)
+    3. Reindex frequency? (for semantic search)
+
+    Everything else uses defaults:
+    - Embedded PostgreSQL (port 5433)
+    - Local embeddings (Qwen3-Embedding-0.6B)
+    - TLDR code analysis tool
+    - Semantic search enabled
     """
     console.print(
         Panel.fit("[bold]CLAUDE2000 - SETUP WIZARD[/bold]", border_style="blue")
     )
 
-    # Step 0: Backup global ~/.claude (safety first)
-    console.print("\n[bold]Step 0/9: Backing up global Claude configuration...[/bold]")
     from scripts.setup.claude_integration import (
         backup_global_claude_dir,
         get_global_claude_dir,
+        get_opc_integration_source,
+        install_opc_integration,
+        install_opc_integration_symlink,
+        detect_existing_setup,
     )
 
     global_claude = get_global_claude_dir()
-    if global_claude.exists():
-        backup_path = backup_global_claude_dir()
-        if backup_path:
-            console.print(f"  [green]OK[/green] Backed up ~/.claude to {backup_path.name}")
-        else:
-            console.print("  [yellow]WARN[/yellow] Could not create backup")
-    else:
-        console.print("  [dim]No existing ~/.claude found (clean install)[/dim]")
 
-    # Step 1: Check prerequisites (with installation offers)
-    console.print("\n[bold]Step 1/9: Checking system requirements...[/bold]")
+    # === PROMPT 1: Backup existing? ===
+    if global_claude.exists():
+        console.print("\n[bold]Existing ~/.claude found[/bold]")
+        if Confirm.ask("Create backup before proceeding?", default=True):
+            backup_path = backup_global_claude_dir()
+            if backup_path:
+                console.print(f"  [green]OK[/green] Backed up to {backup_path.name}")
+            else:
+                console.print("  [yellow]WARN[/yellow] Could not create backup")
+    else:
+        console.print("\n[dim]No existing ~/.claude found (clean install)[/dim]")
+
+    # === PROMPT 2: Installation mode? ===
+    console.print("\n[bold]Installation Mode[/bold]")
+    console.print("  1. [bold]copy[/bold]    - Copy files to ~/.claude/ (default)")
+    console.print("  2. [bold]symlink[/bold] - Link to repo (best for contributors)")
+    install_mode = Prompt.ask("Mode", choices=["copy", "symlink"], default="copy")
+
+    # === PROMPT 3: Reindex frequency? ===
+    console.print("\n[bold]Semantic Search[/bold]")
+    console.print("  Auto-reindex after how many file changes?")
+    threshold_str = Prompt.ask("Threshold", default="20")
+    try:
+        reindex_threshold = int(threshold_str)
+    except ValueError:
+        reindex_threshold = 20
+
+    # === AUTO: Check prerequisites ===
+    console.print("\n[bold]Checking prerequisites...[/bold]")
     prereqs = await check_prerequisites_with_install_offers()
 
     if prereqs["python"]:
@@ -524,62 +547,31 @@ async def run_setup_wizard() -> None:
         console.print("\n[red]Cannot continue without all prerequisites.[/red]")
         sys.exit(1)
 
-    # Step 2: Database config
-    console.print("\n[bold]Step 2/9: Database Configuration[/bold]")
-    console.print("  Choose your database backend:")
-    console.print("    [bold]embedded[/bold]  - Embedded PostgreSQL (recommended)")
-    console.print("    [bold]sqlite[/bold]    - SQLite fallback (simplest, limited features)")
-    db_mode = Prompt.ask("\n  Database mode", choices=["embedded", "sqlite"], default="embedded")
-
-    if db_mode == "embedded":
-        from scripts.setup.embedded_postgres import setup_embedded_environment
-        console.print("  Setting up embedded postgres (creates Python 3.12 environment)...")
-        embed_result = await setup_embedded_environment()
-        if embed_result["success"]:
-            console.print(f"  [green]OK[/green] Embedded environment ready at {embed_result['venv']}")
-            db_config = {"mode": "embedded", "pgdata": str(embed_result["pgdata"]), "venv": str(embed_result["venv"])}
-        else:
-            console.print(f"  [red]ERROR[/red] {embed_result.get('error', 'Unknown')}")
-            console.print("  Falling back to SQLite mode")
-            db_mode = "sqlite"
-            db_config = {"mode": "sqlite"}
-
-    if db_mode == "sqlite":
-        db_config = {"mode": "sqlite"}
-        console.print("  [yellow]Note:[/yellow] Cross-terminal coordination disabled in SQLite mode")
-
-    if False:  # Docker option removed
-        console.print("  [dim]Customize host/port for containers (podman, nerdctl) or remote postgres.[/dim]")
-        if Confirm.ask("Configure database connection?", default=True):
-            db_config = await prompt_database_config()
-            password = Prompt.ask("Database password", password=True, default="claude_dev")
-            db_config["password"] = password
-        else:
-            db_config = {
-                "host": "localhost",
-                "port": 5432,
-                "database": "continuous_claude",
-                "user": "claude",
-                "password": "claude_dev",
-            }
-        db_config["mode"] = "docker"
-
-    # Step 3: Embedding configuration
-    console.print("\n[bold]Step 3/9: Embedding Configuration[/bold]")
-    if Confirm.ask("Configure embedding provider?", default=True):
-        embeddings = await prompt_embedding_config()
+    # === AUTO: Database (embedded postgres) ===
+    console.print("\n[bold]Setting up embedded PostgreSQL...[/bold]")
+    from scripts.setup.embedded_postgres import setup_embedded_environment
+    embed_result = await setup_embedded_environment()
+    if embed_result["success"]:
+        console.print(f"  [green]OK[/green] Environment ready at {embed_result['venv']}")
+        db_config = {"mode": "embedded", "pgdata": str(embed_result["pgdata"]), "venv": str(embed_result["venv"])}
+        db_mode = "embedded"
     else:
-        embeddings = {"provider": "local"}
+        console.print(f"  [yellow]WARN[/yellow] {embed_result.get('error', 'Unknown')}, falling back to SQLite")
+        db_config = {"mode": "sqlite"}
+        db_mode = "sqlite"
 
-    # Step 4: Generate .env
-    console.print("\n[bold]Step 4/9: Generating configuration...[/bold]")
+    # === AUTO: Embeddings (local) ===
+    embeddings = {"provider": "local"}
+
+    # === AUTO: Generate .env ===
+    console.print("\n[bold]Generating configuration...[/bold]")
     config = {"database": db_config, "embeddings": embeddings}
     env_path = Path.cwd() / ".env"
     generate_env_file(config, env_path)
     console.print(f"  [green]OK[/green] Generated {env_path}")
 
-    # Step 6: Database Setup (initialize and migrate)
-    console.print("\n[bold]Step 5/9: Database Setup[/bold]")
+    # === AUTO: Database Setup ===
+    console.print("\n[bold]Initializing database...[/bold]")
     if db_mode == "embedded":
         console.print("  Initializing embedded PostgreSQL (this may take a moment)...")
         try:
@@ -645,370 +637,90 @@ async def run_setup_wizard() -> None:
     elif db_mode == "sqlite":
         console.print("  [dim]SQLite mode - no migrations needed[/dim]")
 
-    # Step 7: Claude Code Integration
-    console.print("\n[bold]Step 6/9: Claude Code Integration[/bold]")
-    from scripts.setup.claude_integration import (
-        analyze_conflicts,
-        backup_claude_dir,
-        detect_existing_setup,
-        generate_migration_guidance,
-        get_global_claude_dir,
-        get_opc_integration_source,
-        install_opc_integration,
-        install_opc_integration_symlink,
-    )
+    # === AUTO: Claude Code Integration (using install_mode from prompt) ===
+    console.print("\n[bold]Installing Claude Code integration...[/bold]")
+    claude_dir = global_claude
+    opc_source = get_opc_integration_source()
 
-    claude_dir = get_global_claude_dir()  # Use global ~/.claude, not project-local
-    existing = detect_existing_setup(claude_dir)
-
-    if existing.has_existing:
-        console.print("  Found existing configuration:")
-        console.print(f"    - Hooks: {len(existing.hooks)}")
-        console.print(f"    - Skills: {len(existing.skills)}")
-        console.print(f"    - Rules: {len(existing.rules)}")
-        console.print(f"    - MCPs: {len(existing.mcps)}")
-
-        opc_source = get_opc_integration_source()
-        conflicts = analyze_conflicts(existing, opc_source)
-
-        if conflicts.has_conflicts:
-            console.print("\n  [yellow]Conflicts detected:[/yellow]")
-            if conflicts.hook_conflicts:
-                console.print(f"    - Hook conflicts: {', '.join(conflicts.hook_conflicts)}")
-            if conflicts.skill_conflicts:
-                console.print(f"    - Skill conflicts: {', '.join(conflicts.skill_conflicts)}")
-            if conflicts.mcp_conflicts:
-                console.print(f"    - MCP conflicts: {', '.join(conflicts.mcp_conflicts)}")
-
-        # Show migration guidance
-        guidance = generate_migration_guidance(existing, conflicts)
-        console.print(f"\n{guidance}")
-
-        # Offer choices
-        console.print("\n[bold]Installation Options:[/bold]")
-        console.print("  1. Full install (backup existing, copy OPC, merge non-conflicting)")
-        console.print("  2. Fresh install (backup existing, copy OPC only)")
-        console.print("  3. [cyan]Symlink install[/cyan] (link to repo - best for contributors)")
-        console.print("  4. Skip (keep existing configuration)")
-        console.print("")
-        console.print("  [dim]Symlink mode links rules/skills/hooks/agents to the repo.[/dim]")
-        console.print("  [dim]Changes sync automatically; great for contributing back.[/dim]")
-
-        choice = Prompt.ask("Choose option", choices=["1", "2", "3", "4"], default="1")
-
-        if choice in ("1", "2"):
-            # Backup first
-            backup_path = backup_claude_dir(claude_dir)
-            if backup_path:
-                console.print(f"  [green]OK[/green] Backup created: {backup_path.name}")
-
-            # Install (copy mode)
-            merge = choice == "1"
-            result = install_opc_integration(
-                claude_dir,
-                opc_source,
-                merge_user_items=merge,
-                existing=existing if merge else None,
-                conflicts=conflicts if merge else None,
-            )
-
-            if result["success"]:
-                console.print(f"  [green]OK[/green] Installed {result['installed_hooks']} hooks")
-                console.print(f"  [green]OK[/green] Installed {result['installed_skills']} skills")
-                console.print(f"  [green]OK[/green] Installed {result['installed_rules']} rules")
-                console.print(f"  [green]OK[/green] Installed {result['installed_agents']} agents")
-                console.print(f"  [green]OK[/green] Installed {result['installed_servers']} MCP servers")
-                if result["merged_items"]:
-                    console.print(
-                        f"  [green]OK[/green] Merged {len(result['merged_items'])} custom items"
-                    )
-
-                # Build TypeScript hooks
-                console.print("  Building TypeScript hooks...")
-                hooks_dir = claude_dir / "hooks"
-                build_success, build_msg = build_typescript_hooks(hooks_dir)
-                if build_success:
-                    console.print(f"  [green]OK[/green] {build_msg}")
-                else:
-                    console.print(f"  [yellow]WARN[/yellow] {build_msg}")
-                    console.print("  [dim]You can build manually: cd ~/.claude/hooks && npm install && npm run build[/dim]")
-            else:
-                console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
-        elif choice == "3":
-            # Symlink mode
-            result = install_opc_integration_symlink(claude_dir, opc_source)
-
-            if result["success"]:
-                console.print(f"  [green]OK[/green] Symlinked: {', '.join(result['symlinked_dirs'])}")
-                if result["backed_up_dirs"]:
-                    console.print(f"  [green]OK[/green] Backed up: {', '.join(result['backed_up_dirs'])}")
-                console.print("  [dim]Changes in ~/.claude/ now sync to repo automatically[/dim]")
-
-                # Build TypeScript hooks
-                console.print("  Building TypeScript hooks...")
-                hooks_dir = claude_dir / "hooks"
-                build_success, build_msg = build_typescript_hooks(hooks_dir)
-                if build_success:
-                    console.print(f"  [green]OK[/green] {build_msg}")
-                else:
-                    console.print(f"  [yellow]WARN[/yellow] {build_msg}")
-                    console.print("  [dim]You can build manually: cd ~/.claude/hooks && npm install && npm run build[/dim]")
-            else:
-                console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
+    if install_mode == "symlink":
+        result = install_opc_integration_symlink(claude_dir, opc_source)
+        if result["success"]:
+            console.print(f"  [green]OK[/green] Symlinked: {', '.join(result['symlinked_dirs'])}")
         else:
-            console.print("  Skipped integration installation")
+            console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
+    else:  # copy mode
+        result = install_opc_integration(claude_dir, opc_source)
+        if result["success"]:
+            console.print(f"  [green]OK[/green] Installed {result['installed_hooks']} hooks")
+            console.print(f"  [green]OK[/green] Installed {result['installed_skills']} skills")
+            console.print(f"  [green]OK[/green] Installed {result['installed_rules']} rules")
+            console.print(f"  [green]OK[/green] Installed {result['installed_agents']} agents")
+        else:
+            console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
+
+    # Build TypeScript hooks
+    console.print("  Building TypeScript hooks...")
+    hooks_dir = claude_dir / "hooks"
+    build_success, build_msg = build_typescript_hooks(hooks_dir)
+    if build_success:
+        console.print(f"  [green]OK[/green] {build_msg}")
     else:
-        # Clean install - offer copy vs symlink
-        console.print("  No existing configuration found.")
-        console.print("\n[bold]Installation Mode:[/bold]")
-        console.print("  1. Copy install (default - copies files to ~/.claude/)")
-        console.print("  2. [cyan]Symlink install[/cyan] (links to repo - best for contributors)")
-        console.print("  3. Skip")
-        console.print("")
-        console.print("  [dim]Symlink mode links rules/skills/hooks/agents to the repo.[/dim]")
-        console.print("  [dim]Changes sync automatically; great for contributing back.[/dim]")
+        console.print(f"  [yellow]WARN[/yellow] {build_msg}")
 
-        choice = Prompt.ask("Choose mode", choices=["1", "2", "3"], default="1")
+    # === AUTO: TLDR Code Analysis Tool ===
+    console.print("\n[bold]Installing TLDR code analysis...[/bold]")
+    import subprocess
 
-        if choice == "1":
-            opc_source = get_opc_integration_source()
-            result = install_opc_integration(claude_dir, opc_source)
-
-            if result["success"]:
-                console.print(f"  [green]OK[/green] Installed {result['installed_hooks']} hooks")
-                console.print(f"  [green]OK[/green] Installed {result['installed_skills']} skills")
-                console.print(f"  [green]OK[/green] Installed {result['installed_rules']} rules")
-                console.print(f"  [green]OK[/green] Installed {result['installed_agents']} agents")
-                console.print(f"  [green]OK[/green] Installed {result['installed_servers']} MCP servers")
-
-                # Build TypeScript hooks
-                console.print("  Building TypeScript hooks...")
-                hooks_dir = claude_dir / "hooks"
-                build_success, build_msg = build_typescript_hooks(hooks_dir)
-                if build_success:
-                    console.print(f"  [green]OK[/green] {build_msg}")
-                else:
-                    console.print(f"  [yellow]WARN[/yellow] {build_msg}")
-                    console.print("  [dim]You can build manually: cd ~/.claude/hooks && npm install && npm run build[/dim]")
-            else:
-                console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
-        elif choice == "2":
-            opc_source = get_opc_integration_source()
-            result = install_opc_integration_symlink(claude_dir, opc_source)
-
-            if result["success"]:
-                console.print(f"  [green]OK[/green] Symlinked: {', '.join(result['symlinked_dirs'])}")
-                console.print("  [dim]Changes in ~/.claude/ now sync to repo automatically[/dim]")
-
-                # Build TypeScript hooks
-                console.print("  Building TypeScript hooks...")
-                hooks_dir = claude_dir / "hooks"
-                build_success, build_msg = build_typescript_hooks(hooks_dir)
-                if build_success:
-                    console.print(f"  [green]OK[/green] {build_msg}")
-                else:
-                    console.print(f"  [yellow]WARN[/yellow] {build_msg}")
-                    console.print("  [dim]You can build manually: cd ~/.claude/hooks && npm install && npm run build[/dim]")
-            else:
-                console.print(f"  [red]ERROR[/red] {result.get('error', 'Unknown error')}")
+    try:
+        result = subprocess.run(
+            ["uv", "tool", "install", "llm-tldr"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            console.print("  [green]OK[/green] TLDR installed")
         else:
-            console.print("  Skipped integration installation")
+            console.print(f"  [yellow]WARN[/yellow] TLDR install failed: {result.stderr[:100]}")
+    except Exception as e:
+        console.print(f"  [yellow]WARN[/yellow] TLDR install failed: {e}")
 
-    # Note: Environment variables are set in the final step when scripts are installed
-    # to ~/.claude/claude2000/. This ensures CLAUDE_2000_DIR and CLAUDE_OPC_DIR
-    # point to the installed location, not the repo.
-
-    # Step 8: TLDR Code Analysis Tool
-    console.print("\n[bold]Step 7/9: TLDR Code Analysis Tool[/bold]")
-    console.print("  TLDR provides token-efficient code analysis for LLMs:")
-    console.print("    - 95% token savings vs reading raw files")
-    console.print("    - 155x faster queries with daemon mode")
-    console.print("    - Semantic search, call graphs, program slicing")
-    console.print("    - Works with Python, TypeScript, Go, Rust")
-    console.print("")
-    console.print("  [dim]Note: First semantic search downloads ~1.3GB embedding model.[/dim]")
-
-    if Confirm.ask("\nInstall TLDR code analysis tool?", default=True):
-        console.print("  Installing TLDR...")
-        import subprocess
-
+    # === AUTO: Semantic search config (using reindex_threshold from prompt) ===
+    console.print("\n[bold]Configuring semantic search...[/bold]")
+    settings_path = global_claude / "settings.json"
+    settings = {}
+    if settings_path.exists():
         try:
-            # Install from PyPI using uv tool (puts tldr CLI in PATH)
-            # Use 300s timeout - first install resolves many deps
-            result = subprocess.run(
-                ["uv", "tool", "install", "llm-tldr"],
-                capture_output=True,
-                text=True,
-                timeout=300,
-            )
+            settings = json.loads(settings_path.read_text())
+        except Exception:
+            pass
 
-            if result.returncode == 0:
-                console.print("  [green]OK[/green] TLDR installed")
+    # Detect GPU for model selection
+    has_gpu = False
+    try:
+        import torch
+        has_gpu = torch.cuda.is_available() or torch.backends.mps.is_available()
+    except ImportError:
+        pass  # No torch = assume no GPU
 
-                # Verify it works AND is the right tldr (not tldr-pages)
-                console.print("  Verifying installation...")
-                verify_result = subprocess.run(
-                    ["tldr", "--help"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                # Check if this is llm-tldr (has 'tree', 'structure', 'daemon') not tldr-pages
-                is_llm_tldr = any(cmd in verify_result.stdout for cmd in ["tree", "structure", "daemon"])
-                if verify_result.returncode == 0 and is_llm_tldr:
-                    console.print("  [green]OK[/green] TLDR CLI available")
-                elif verify_result.returncode == 0 and not is_llm_tldr:
-                    console.print("  [yellow]WARN[/yellow] Wrong tldr detected (tldr-pages, not llm-tldr)")
-                    console.print("  [yellow]    [/yellow] The 'tldr' command is shadowed by tldr-pages.")
-                    console.print("  [yellow]    [/yellow] Uninstall tldr-pages: pip uninstall tldr")
-                    console.print("  [yellow]    [/yellow] Or use full path: ~/.local/bin/tldr")
-
-                if is_llm_tldr:
-                    console.print("")
-                    console.print("  [dim]Quick start:[/dim]")
-                    console.print("    tldr tree .              # See project structure")
-                    console.print("    tldr structure . --lang python  # Code overview")
-                    console.print("    tldr daemon start        # Start daemon (155x faster)")
-
-                    # Configure semantic search
-                    console.print("")
-                    console.print("  [bold]Semantic Search Configuration[/bold]")
-                    console.print("  Natural language code search using AI embeddings.")
-                    console.print("  [dim]First run downloads ~1.3GB model and indexes your codebase.[/dim]")
-                    console.print("  [dim]Auto-reindexes in background when files change.[/dim]")
-
-                    if Confirm.ask("\n  Enable semantic search?", default=True):
-                        # Get threshold
-                        threshold_str = Prompt.ask(
-                            "  Auto-reindex after how many file changes?",
-                            default="20"
-                        )
-                        try:
-                            threshold = int(threshold_str)
-                        except ValueError:
-                            threshold = 20
-
-                        # Save config to global ~/.claude/settings.json
-                        settings_path = get_global_claude_dir() / "settings.json"
-                        settings = {}
-                        if settings_path.exists():
-                            try:
-                                settings = json.loads(settings_path.read_text())
-                            except Exception:
-                                pass
-
-                        # Detect GPU for model selection
-                        # BGE-large (1.3GB) needs GPU, MiniLM (80MB) works on CPU
-                        has_gpu = False
-                        try:
-                            import torch
-                            has_gpu = torch.cuda.is_available() or torch.backends.mps.is_available()
-                        except ImportError:
-                            pass  # No torch = assume no GPU
-
-                        if has_gpu:
-                            model = "bge-large-en-v1.5"
-                            timeout = 600  # 10 min with GPU
-                        else:
-                            model = "all-MiniLM-L6-v2"
-                            timeout = 300  # 5 min for small model
-                            console.print("  [dim]No GPU detected, using lightweight model[/dim]")
-
-                        settings["semantic_search"] = {
-                            "enabled": True,
-                            "auto_reindex_threshold": threshold,
-                            "model": model,
-                        }
-
-                        settings_path.parent.mkdir(parents=True, exist_ok=True)
-                        settings_path.write_text(json.dumps(settings, indent=2))
-                        console.print(f"  [green]OK[/green] Semantic search enabled (threshold: {threshold})")
-
-                        # Offer to pre-download embedding model
-                        # Note: We only download the model here, not index any directory.
-                        # Indexing happens per-project when user runs `tldr semantic index .`
-                        if Confirm.ask("\n  Pre-download embedding model now?", default=True):
-                            console.print(f"  Downloading {model} embedding model...")
-                            try:
-                                # Just load the model to trigger download (no indexing)
-                                download_result = subprocess.run(
-                                    [sys.executable, "-c", f"from tldr.semantic import get_model; get_model('{model}')"],
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=timeout,
-                                    env={**os.environ, "TLDR_AUTO_DOWNLOAD": "1"},
-                                )
-                                if download_result.returncode == 0:
-                                    console.print("  [green]OK[/green] Embedding model downloaded")
-                                else:
-                                    console.print("  [yellow]WARN[/yellow] Download had issues")
-                                    if download_result.stderr:
-                                        console.print(f"       {download_result.stderr[:200]}")
-                            except subprocess.TimeoutExpired:
-                                console.print("  [yellow]WARN[/yellow] Download timed out")
-                            except Exception as e:
-                                console.print(f"  [yellow]WARN[/yellow] {e}")
-                        else:
-                            console.print("  [dim]Model downloads on first use of: tldr semantic index .[/dim]")
-                    else:
-                        console.print("  Semantic search disabled")
-                        console.print("  [dim]Enable later in .claude/settings.json[/dim]")
-                else:
-                    console.print("  [yellow]WARN[/yellow] TLDR installed but not on PATH")
-            else:
-                console.print("  [red]ERROR[/red] Installation failed")
-                console.print(f"       {result.stderr[:200]}")
-                console.print("  You can install manually with: uv tool install llm-tldr")
-        except subprocess.TimeoutExpired:
-            console.print("  [yellow]WARN[/yellow] Installation timed out")
-            console.print("  You can install manually with: uv tool install llm-tldr")
-        except Exception as e:
-            console.print(f"  [red]ERROR[/red] {e}")
-            console.print("  You can install manually with: uv tool install llm-tldr")
+    if has_gpu:
+        model = "bge-large-en-v1.5"
     else:
-        console.print("  Skipped TLDR installation")
-        console.print("  [dim]Install later with: uv tool install llm-tldr[/dim]")
+        model = "all-MiniLM-L6-v2"
+        console.print("  [dim]No GPU detected, using lightweight model[/dim]")
 
-    # Step 10: Diagnostics Tools (Shift-Left Feedback)
-    console.print("\n[bold]Step 8/9: Diagnostics Tools (Shift-Left Feedback)[/bold]")
-    console.print("  Claude gets immediate type/lint feedback after editing files.")
-    console.print("  This catches errors before tests run (shift-left).")
-    console.print("")
-
-    # Auto-detect what's installed
-    diagnostics_tools = {
-        "pyright": {"cmd": "pyright", "lang": "Python", "install": "pip install pyright"},
-        "ruff": {"cmd": "ruff", "lang": "Python", "install": "pip install ruff"},
-        "eslint": {"cmd": "eslint", "lang": "TypeScript/JS", "install": "npm install -g eslint"},
-        "tsc": {"cmd": "tsc", "lang": "TypeScript", "install": "npm install -g typescript"},
-        "go": {"cmd": "go", "lang": "Go", "install": "brew install go"},
-        "clippy": {"cmd": "cargo", "lang": "Rust", "install": "rustup component add clippy"},
+    settings["semantic_search"] = {
+        "enabled": True,
+        "auto_reindex_threshold": reindex_threshold,
+        "model": model,
     }
 
-    console.print("  [bold]Detected tools:[/bold]")
-    missing_tools = []
-    for name, info in diagnostics_tools.items():
-        if shutil.which(info["cmd"]):
-            console.print(f"    [green]✓[/green] {info['lang']}: {name}")
-        else:
-            console.print(f"    [red]✗[/red] {info['lang']}: {name}")
-            missing_tools.append((name, info))
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps(settings, indent=2))
+    console.print(f"  [green]OK[/green] Semantic search enabled (threshold: {reindex_threshold})")
 
-    if missing_tools:
-        console.print("")
-        console.print("  [bold]Install missing tools:[/bold]")
-        for name, info in missing_tools:
-            console.print(f"    {name}: [dim]{info['install']}[/dim]")
-    else:
-        console.print("")
-        console.print("  [green]All diagnostics tools available![/green]")
-
-    console.print("")
-    console.print("  [dim]Note: Currently only Python diagnostics are wired up.[/dim]")
-    console.print("  [dim]TypeScript, Go, Rust coming soon.[/dim]")
-
-    # Step 9/9: Install scripts to ~/.claude/claude2000/
-    console.print("\n[bold]Step 9/9: Installing Claude2000 scripts...[/bold]")
+    # === AUTO: Install scripts to ~/.claude/claude2000/ ===
+    console.print("\n[bold]Installing Claude2000 scripts...[/bold]")
     install_dir = Path.home() / ".claude" / "claude2000"
     scripts_source = Path(__file__).parent.parent  # opc/scripts/
     scripts_dest = install_dir / "scripts"
