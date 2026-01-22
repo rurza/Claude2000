@@ -1,164 +1,209 @@
 #!/usr/bin/env python3
 """
-USAGE: artifact_query.py <query> [--type TYPE] [--outcome OUTCOME] [--limit N] [--db PATH]
+USAGE: artifact_query.py <query> [--type TYPE] [--outcome OUTCOME] [--limit N]
 
-Search the Context Graph for relevant precedent.
+Search the Context Graph for relevant precedent using PostgreSQL full-text search.
+NO SQLITE - PostgreSQL only via asyncpg.
 
 Examples:
     # Search for authentication-related work
-    uv run python scripts/artifact_query.py "authentication OAuth JWT"
+    PYTHONPATH=~/.claude/claude2000 python scripts/core/artifact_query.py "authentication OAuth JWT"
 
     # Search only successful handoffs
-    uv run python scripts/artifact_query.py "implement agent" --outcome SUCCEEDED
+    PYTHONPATH=~/.claude/claude2000 python scripts/core/artifact_query.py "implement agent" --outcome SUCCEEDED
 
     # Search plans only
-    uv run python scripts/artifact_query.py "API design" --type plans
+    PYTHONPATH=~/.claude/claude2000 python scripts/core/artifact_query.py "API design" --type plans
 """
 
+from __future__ import annotations
+
 import argparse
+import asyncio
 import hashlib
 import json
-import sqlite3
+import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any
+
+# Load .env files for CLAUDE2000_DB_URL
+try:
+    from dotenv import load_dotenv
+
+    # Try ~/.claude/claude2000/.env first (consolidated location)
+    claude2000_env = Path.home() / ".claude" / "claude2000" / ".env"
+    if claude2000_env.exists():
+        load_dotenv(claude2000_env)
+    else:
+        # Fallback to ~/.claude/.env
+        global_env = Path.home() / ".claude" / ".env"
+        if global_env.exists():
+            load_dotenv(global_env)
+except ImportError:
+    pass  # dotenv not required if env vars already set
 
 
-def get_db_path(custom_path: str | None = None) -> Path:
-    if custom_path:
-        return Path(custom_path)
-    return Path(".claude/cache/artifact-index/context.db")
+def get_postgres_url() -> str | None:
+    """Get PostgreSQL URL from environment."""
+    return os.environ.get("CLAUDE2000_DB_URL")
 
 
-def escape_fts5_query(query: str) -> str:
-    """Escape FTS5 query to prevent syntax errors.
+def build_tsquery(query: str) -> str:
+    """Build a PostgreSQL tsquery from user input.
 
-    Splits query into words and joins with OR for flexible matching.
-    Each word is quoted to handle special characters.
+    Splits query into words and joins with | (OR) for flexible matching.
+    Each word is sanitized to prevent syntax errors.
     """
-    # Split on whitespace and quote each word
-    words = query.split()
-    quoted_words = [f'"{w.replace(chr(34), chr(34) + chr(34))}"' for w in words]
-    # Join with OR for flexible matching
-    return " OR ".join(quoted_words)
+    # Split on whitespace and filter empty strings
+    words = [w.strip() for w in query.split() if w.strip()]
+    if not words:
+        return ""
+    # Sanitize each word (remove special characters that break tsquery)
+    sanitized = []
+    for word in words:
+        # Keep alphanumeric and basic punctuation
+        clean = "".join(c for c in word if c.isalnum() or c in "-_")
+        if clean:
+            sanitized.append(clean)
+    if not sanitized:
+        return ""
+    # Join with OR operator for flexible matching
+    return " | ".join(sanitized)
 
 
-def get_handoff_by_span_id(conn: sqlite3.Connection, root_span_id: str) -> dict | None:
+# =============================================================================
+# ASYNC DATABASE FUNCTIONS
+# =============================================================================
+
+
+async def get_handoff_by_span_id(conn: Any, root_span_id: str) -> dict | None:
     """Get a handoff by its Braintrust root_span_id."""
     sql = """
-        SELECT id, session_name, task_number, task_summary,
-               what_worked, what_failed, key_decisions,
-               outcome, file_path, root_span_id, created_at
+        SELECT id, session_name, goal, what_worked, what_failed,
+               key_decisions, outcome, file_path, root_span_id, created_at
         FROM handoffs
-        WHERE root_span_id = ?
+        WHERE root_span_id = $1
         LIMIT 1
     """
-    cursor = conn.execute(sql, [root_span_id])
-    columns = [desc[0] for desc in cursor.description]
-    row = cursor.fetchone()
+    row = await conn.fetchrow(sql, root_span_id)
     if row:
-        return dict(zip(columns, row))
+        return dict(row)
     return None
 
 
-def get_ledger_for_session(conn: sqlite3.Connection, session_name: str) -> dict | None:
+async def get_ledger_for_session(conn: Any, session_name: str) -> dict | None:
     """Get continuity ledger by session name."""
     sql = """
         SELECT id, session_name, goal, key_learnings, key_decisions,
-               state_done, state_now, state_next, created_at
+               state_done, state_now, state_next, indexed_at as created_at
         FROM continuity
-        WHERE session_name = ?
-        ORDER BY created_at DESC
+        WHERE session_name = $1
+        ORDER BY indexed_at DESC
         LIMIT 1
     """
-    cursor = conn.execute(sql, [session_name])
-    columns = [desc[0] for desc in cursor.description]
-    row = cursor.fetchone()
+    row = await conn.fetchrow(sql, session_name)
     if row:
-        return dict(zip(columns, row))
+        return dict(row)
     return None
 
 
-def search_handoffs(
-    conn: sqlite3.Connection, query: str, outcome: str | None = None, limit: int = 5
-) -> list:
-    """Search handoffs using FTS5 with BM25 ranking."""
-    # Use rank column (faster than bm25() function for sorting)
-    sql = """
-        SELECT h.id, h.session_name, h.task_number, h.task_summary,
-               h.what_worked, h.what_failed, h.key_decisions,
-               h.outcome, h.file_path, h.created_at,
-               handoffs_fts.rank as score
-        FROM handoffs_fts
-        JOIN handoffs h ON handoffs_fts.rowid = h.rowid
-        WHERE handoffs_fts MATCH ?
-    """
-    params = [escape_fts5_query(query)]
+async def search_handoffs(
+    conn: Any, query: str, outcome: str | None = None, limit: int = 5
+) -> list[dict]:
+    """Search handoffs using PostgreSQL full-text search with ts_rank."""
+    tsquery = build_tsquery(query)
+    if not tsquery:
+        return []
 
     if outcome:
-        sql += " AND h.outcome = ?"
-        params.append(outcome)
+        sql = """
+            SELECT id, session_name, goal as task_summary,
+                   what_worked, what_failed, key_decisions,
+                   outcome, file_path, created_at,
+                   ts_rank(search_vector, to_tsquery('english', $1)) as score
+            FROM handoffs
+            WHERE search_vector @@ to_tsquery('english', $1)
+              AND outcome = $2
+            ORDER BY score DESC
+            LIMIT $3
+        """
+        rows = await conn.fetch(sql, tsquery, outcome, limit)
+    else:
+        sql = """
+            SELECT id, session_name, goal as task_summary,
+                   what_worked, what_failed, key_decisions,
+                   outcome, file_path, created_at,
+                   ts_rank(search_vector, to_tsquery('english', $1)) as score
+            FROM handoffs
+            WHERE search_vector @@ to_tsquery('english', $1)
+            ORDER BY score DESC
+            LIMIT $2
+        """
+        rows = await conn.fetch(sql, tsquery, limit)
 
-    sql += " ORDER BY rank LIMIT ?"
-    params.append(limit)
-
-    cursor = conn.execute(sql, params)
-    columns = [desc[0] for desc in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    return [dict(row) for row in rows]
 
 
-def search_plans(conn: sqlite3.Connection, query: str, limit: int = 3) -> list:
-    """Search plans using FTS5 with BM25 ranking."""
+async def search_plans(conn: Any, query: str, limit: int = 3) -> list[dict]:
+    """Search plans using PostgreSQL full-text search with ts_rank."""
+    tsquery = build_tsquery(query)
+    if not tsquery:
+        return []
+
     sql = """
-        SELECT p.id, p.title, p.overview, p.approach, p.file_path, p.created_at,
-               plans_fts.rank as score
-        FROM plans_fts
-        JOIN plans p ON plans_fts.rowid = p.rowid
-        WHERE plans_fts MATCH ?
-        ORDER BY rank
-        LIMIT ?
+        SELECT id, title, overview, approach, file_path, indexed_at as created_at,
+               ts_rank(search_vector, to_tsquery('english', $1)) as score
+        FROM plans
+        WHERE search_vector @@ to_tsquery('english', $1)
+        ORDER BY score DESC
+        LIMIT $2
     """
-    cursor = conn.execute(sql, [escape_fts5_query(query), limit])
-    columns = [desc[0] for desc in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    rows = await conn.fetch(sql, tsquery, limit)
+    return [dict(row) for row in rows]
 
 
-def search_continuity(conn: sqlite3.Connection, query: str, limit: int = 3) -> list:
-    """Search continuity ledgers using FTS5 with BM25 ranking."""
+async def search_continuity(conn: Any, query: str, limit: int = 3) -> list[dict]:
+    """Search continuity ledgers using PostgreSQL full-text search with ts_rank."""
+    tsquery = build_tsquery(query)
+    if not tsquery:
+        return []
+
     sql = """
-        SELECT c.id, c.session_name, c.goal, c.key_learnings, c.key_decisions,
-               c.state_now, c.created_at,
-               continuity_fts.rank as score
-        FROM continuity_fts
-        JOIN continuity c ON continuity_fts.rowid = c.rowid
-        WHERE continuity_fts MATCH ?
-        ORDER BY rank
-        LIMIT ?
+        SELECT id, session_name, goal, key_learnings, key_decisions,
+               state_now, indexed_at as created_at,
+               ts_rank(search_vector, to_tsquery('english', $1)) as score
+        FROM continuity
+        WHERE search_vector @@ to_tsquery('english', $1)
+        ORDER BY score DESC
+        LIMIT $2
     """
-    cursor = conn.execute(sql, [escape_fts5_query(query), limit])
-    columns = [desc[0] for desc in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    rows = await conn.fetch(sql, tsquery, limit)
+    return [dict(row) for row in rows]
 
 
-def search_past_queries(conn: sqlite3.Connection, query: str, limit: int = 2) -> list:
+async def search_past_queries(conn: Any, query: str, limit: int = 2) -> list[dict]:
     """Check if similar questions have been asked before."""
+    tsquery = build_tsquery(query)
+    if not tsquery:
+        return []
+
     sql = """
-        SELECT q.id, q.question, q.answer, q.was_helpful, q.created_at,
-               queries_fts.rank as score
-        FROM queries_fts
-        JOIN queries q ON queries_fts.rowid = q.rowid
-        WHERE queries_fts MATCH ?
-        ORDER BY rank
-        LIMIT ?
+        SELECT id, question, answer, was_helpful, created_at,
+               ts_rank(search_vector, to_tsquery('english', $1)) as score
+        FROM queries
+        WHERE search_vector @@ to_tsquery('english', $1)
+        ORDER BY score DESC
+        LIMIT $2
     """
-    cursor = conn.execute(sql, [escape_fts5_query(query), limit])
-    columns = [desc[0] for desc in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    rows = await conn.fetch(sql, tsquery, limit)
+    return [dict(row) for row in rows]
 
 
-# --- Helper functions for reduced complexity ---
+# =============================================================================
+# FORMATTING HELPERS
+# =============================================================================
 
-# Dispatch table for status icons
 STATUS_ICONS = {
     "SUCCEEDED": "v",
     "PARTIAL_PLUS": "~+",
@@ -168,15 +213,7 @@ STATUS_ICONS = {
 
 
 def format_result_section(section_type: str, items: list) -> str:
-    """Format a single result section using dispatch table.
-
-    Args:
-        section_type: One of 'handoffs', 'plans', 'continuity', 'past_queries'
-        items: List of result dicts
-
-    Returns:
-        Formatted markdown string
-    """
+    """Format a single result section using dispatch table."""
     if not items:
         return ""
 
@@ -197,8 +234,8 @@ def _format_past_queries(items: list) -> str:
     """Format past queries section."""
     output = ["## Previously Asked"]
     for q in items:
-        question = q.get("question", "")[:100]
-        answer = q.get("answer", "")[:200]
+        question = (q.get("question") or "")[:100]
+        answer = (q.get("answer") or "")[:200]
         output.append(f"- **Q:** {question}...")
         output.append(f"  **A:** {answer}...")
     output.append("")
@@ -211,9 +248,8 @@ def _format_handoffs(items: list) -> str:
     for h in items:
         status_icon = STATUS_ICONS.get(h.get("outcome"), "?")
         session = h.get("session_name", "unknown")
-        task = h.get("task_number", "?")
-        output.append(f"### {status_icon} {session}/task-{task}")
-        summary = h.get("task_summary", "")[:200]
+        output.append(f"### {status_icon} {session}")
+        summary = (h.get("task_summary") or "")[:200]
         output.append(f"**Summary:** {summary}")
         what_worked = h.get("what_worked")
         if what_worked:
@@ -232,7 +268,7 @@ def _format_plans(items: list) -> str:
     for p in items:
         title = p.get("title", "Untitled")
         output.append(f"### {title}")
-        overview = p.get("overview", "")[:200]
+        overview = (p.get("overview") or "")[:200]
         output.append(f"**Overview:** {overview}")
         output.append(f"**File:** `{p.get('file_path', '')}`")
         output.append("")
@@ -245,7 +281,7 @@ def _format_continuity(items: list) -> str:
     for c in items:
         session = c.get("session_name", "unknown")
         output.append(f"### Session: {session}")
-        goal = c.get("goal", "")[:200]
+        goal = (c.get("goal") or "")[:200]
         output.append(f"**Goal:** {goal}")
         key_learnings = c.get("key_learnings")
         if key_learnings:
@@ -254,20 +290,16 @@ def _format_continuity(items: list) -> str:
     return "\n".join(output)
 
 
-def handle_span_id_lookup(
-    conn: sqlite3.Connection, span_id: str, with_content: bool = False
+# =============================================================================
+# SEARCH DISPATCH AND FORMATTING
+# =============================================================================
+
+
+async def handle_span_id_lookup(
+    conn: Any, span_id: str, with_content: bool = False
 ) -> dict | None:
-    """Handle --by-span-id lookup mode.
-
-    Args:
-        conn: Database connection
-        span_id: Braintrust root_span_id to look up
-        with_content: Whether to include full file content
-
-    Returns:
-        Handoff dict or None if not found
-    """
-    handoff = get_handoff_by_span_id(conn, span_id)
+    """Handle --by-span-id lookup mode."""
+    handoff = await get_handoff_by_span_id(conn, span_id)
 
     if not handoff:
         return None
@@ -300,58 +332,35 @@ def handle_span_id_lookup(
                 handoff["ledger"] = ledger
             else:
                 # Fall back to DB lookup
-                ledger = get_ledger_for_session(conn, session_name)
+                ledger = await get_ledger_for_session(conn, session_name)
                 if ledger:
                     handoff["ledger"] = ledger
 
     return handoff
 
 
-def search_dispatch(
-    conn: sqlite3.Connection,
+async def search_dispatch(
+    conn: Any,
     query: str,
     search_type: str = "all",
     outcome: str | None = None,
     limit: int = 5,
 ) -> dict:
-    """Dispatch search to appropriate handlers based on type.
-
-    Uses dispatch table pattern to reduce if/elif chains.
-
-    Args:
-        conn: Database connection
-        query: Search query string
-        search_type: One of 'handoffs', 'plans', 'continuity', 'all'
-        outcome: Optional outcome filter for handoffs
-        limit: Max results per type
-
-    Returns:
-        Dict with results keyed by type
-    """
-    results = {}
+    """Dispatch search to appropriate handlers based on type."""
+    results: dict[str, list] = {}
 
     # Always check past queries
-    results["past_queries"] = search_past_queries(conn, query)
+    results["past_queries"] = await search_past_queries(conn, query)
 
     # Dispatch table for search types
-    search_handlers = {
-        "handoffs": lambda: search_handoffs(conn, query, outcome, limit),
-        "plans": lambda: search_plans(conn, query, limit),
-        "continuity": lambda: search_continuity(conn, query, limit),
-    }
-
-    if search_type == "all":
-        # Execute all handlers
-        for key, handler in search_handlers.items():
-            results[key] = handler()
-    elif search_type in search_handlers:
-        # Execute only the requested type
-        results[search_type] = search_handlers[search_type]()
+    if search_type == "all" or search_type == "handoffs":
+        results["handoffs"] = await search_handoffs(conn, query, outcome, limit)
+    if search_type == "all" or search_type == "plans":
+        results["plans"] = await search_plans(conn, query, limit)
+    if search_type == "all" or search_type == "continuity":
+        results["continuity"] = await search_continuity(conn, query, limit)
 
     return results
-
-
-# --- End helper functions ---
 
 
 def format_results(results: dict, verbose: bool = False) -> str:
@@ -362,8 +371,8 @@ def format_results(results: dict, verbose: bool = False) -> str:
     if results.get("past_queries"):
         output.append("## Previously Asked")
         for q in results["past_queries"]:
-            question = q.get("question", "")[:100]
-            answer = q.get("answer", "")[:200]
+            question = (q.get("question") or "")[:100]
+            answer = (q.get("answer") or "")[:200]
             output.append(f"- **Q:** {question}...")
             output.append(f"  **A:** {answer}...")
         output.append("")
@@ -373,15 +382,14 @@ def format_results(results: dict, verbose: bool = False) -> str:
         output.append("## Relevant Handoffs")
         for h in results["handoffs"]:
             status_icon = {
-                "SUCCEEDED": "✓",
-                "PARTIAL_PLUS": "◐",
-                "PARTIAL_MINUS": "◑",
-                "FAILED": "✗",
+                "SUCCEEDED": "v",
+                "PARTIAL_PLUS": "~+",
+                "PARTIAL_MINUS": "~-",
+                "FAILED": "x",
             }.get(h.get("outcome"), "?")
             session = h.get("session_name", "unknown")
-            task = h.get("task_number", "?")
-            output.append(f"### {status_icon} {session}/task-{task}")
-            summary = h.get("task_summary", "")[:200]
+            output.append(f"### {status_icon} {session}")
+            summary = (h.get("task_summary") or "")[:200]
             output.append(f"**Summary:** {summary}")
             what_worked = h.get("what_worked")
             if what_worked:
@@ -398,7 +406,7 @@ def format_results(results: dict, verbose: bool = False) -> str:
         for p in results["plans"]:
             title = p.get("title", "Untitled")
             output.append(f"### {title}")
-            overview = p.get("overview", "")[:200]
+            overview = (p.get("overview") or "")[:200]
             output.append(f"**Overview:** {overview}")
             output.append(f"**File:** `{p.get('file_path', '')}`")
             output.append("")
@@ -409,7 +417,7 @@ def format_results(results: dict, verbose: bool = False) -> str:
         for c in results["continuity"]:
             session = c.get("session_name", "unknown")
             output.append(f"### Session: {session}")
-            goal = c.get("goal", "")[:200]
+            goal = (c.get("goal") or "")[:200]
             output.append(f"**Goal:** {goal}")
             key_learnings = c.get("key_learnings")
             if key_learnings:
@@ -422,34 +430,39 @@ def format_results(results: dict, verbose: bool = False) -> str:
     return "\n".join(output)
 
 
-def save_query(conn: sqlite3.Connection, question: str, answer: str, matches: dict):
+async def save_query(conn: Any, question: str, answer: str, matches: dict) -> None:
     """Save query for compound learning."""
     query_id = hashlib.md5(f"{question}{datetime.now().isoformat()}".encode()).hexdigest()[:12]
 
-    conn.execute(
+    # Build search vector from question
+    tsquery_text = build_tsquery(question)
+
+    await conn.execute(
         """
-        INSERT INTO queries (id, question, answer, handoffs_matched, plans_matched, continuity_matched)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """,
-        (
-            query_id,
-            question,
-            answer,
-            json.dumps([h["id"] for h in matches.get("handoffs", [])]),
-            json.dumps([p["id"] for p in matches.get("plans", [])]),
-            json.dumps([c["id"] for c in matches.get("continuity", [])]),
-        ),
+        INSERT INTO queries (id, question, answer, handoffs_matched, plans_matched,
+                            continuity_matched, search_vector)
+        VALUES ($1, $2, $3, $4, $5, $6, to_tsvector('english', $7))
+        ON CONFLICT (id) DO NOTHING
+        """,
+        query_id,
+        question,
+        answer,
+        json.dumps([str(h.get("id", "")) for h in matches.get("handoffs", [])]),
+        json.dumps([str(p.get("id", "")) for p in matches.get("plans", [])]),
+        json.dumps([str(c.get("id", "")) for c in matches.get("continuity", [])]),
+        question,  # Use full question text for tsvector
     )
-    conn.commit()
 
 
-def main():
-    """Main entry point for artifact query CLI.
+# =============================================================================
+# ASYNC MAIN AND CLI ENTRY POINT
+# =============================================================================
 
-    Uses helper functions for reduced complexity:
-    - handle_span_id_lookup(): Handle --by-span-id mode
-    - search_dispatch(): Dispatch search by type
-    """
+
+async def async_main() -> None:
+    """Async main function."""
+    from scripts.core.db.postgres_pool import get_connection
+
     parser = argparse.ArgumentParser(description="Search the Context Graph for relevant precedent")
     parser.add_argument("query", nargs="*", help="Search query")
     parser.add_argument("--type", choices=["handoffs", "plans", "continuity", "all"], default="all")
@@ -457,7 +470,6 @@ def main():
         "--outcome", choices=["SUCCEEDED", "PARTIAL_PLUS", "PARTIAL_MINUS", "FAILED"]
     )
     parser.add_argument("--limit", type=int, default=5)
-    parser.add_argument("--db", type=str, help="Custom database path")
     parser.add_argument("--save", action="store_true", help="Save query for compound learning")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("--by-span-id", type=str, help="Get handoff by Braintrust root_span_id")
@@ -465,62 +477,61 @@ def main():
 
     args = parser.parse_args()
 
-    # Handle --by-span-id mode (direct lookup, no search)
-    if args.by_span_id:
-        db_path = get_db_path(args.db)
-        if not db_path.exists():
-            print(f"Database not found: {db_path}")
+    # Check database URL is configured
+    if not get_postgres_url():
+        print("Error: CLAUDE2000_DB_URL not set")
+        print("Run the wizard: cd ~/.claude && uv run python -m scripts.setup.wizard")
+        return
+
+    print("Using database: PostgreSQL", file=__import__("sys").stderr)
+
+    async with get_connection() as conn:
+        # Handle --by-span-id mode (direct lookup, no search)
+        if args.by_span_id:
+            handoff = await handle_span_id_lookup(conn, args.by_span_id, with_content=args.with_content)
+
+            if args.json:
+                print(json.dumps(handoff, indent=2, default=str))
+            elif handoff:
+                print(f"## Handoff: {handoff.get('session_name')}")
+                print(f"**Outcome:** {handoff.get('outcome', 'UNKNOWN')}")
+                print(f"**File:** {handoff.get('file_path')}")
+                if handoff.get("content"):
+                    print(f"\n{handoff['content']}")
+            else:
+                print(f"No handoff found for root_span_id: {args.by_span_id}")
             return
 
-        conn = sqlite3.connect(db_path)
-        conn.execute("PRAGMA busy_timeout = 5000")
+        # Regular search mode
+        if not args.query:
+            parser.print_help()
+            return
 
-        # Use helper function for span ID lookup
-        handoff = handle_span_id_lookup(conn, args.by_span_id, with_content=args.with_content)
-        conn.close()
+        query = " ".join(args.query)
+
+        # Use dispatch helper for search
+        results = await search_dispatch(conn, query, args.type, args.outcome, args.limit)
 
         if args.json:
-            print(json.dumps(handoff, indent=2, default=str))
-        elif handoff:
-            print(f"## Handoff: {handoff.get('session_name')}/task-{handoff.get('task_number')}")
-            print(f"**Outcome:** {handoff.get('outcome', 'UNKNOWN')}")
-            print(f"**File:** {handoff.get('file_path')}")
-            if handoff.get("content"):
-                print(f"\n{handoff['content']}")
+            # Convert UUID objects to strings for JSON serialization
+            def serialize(obj: Any) -> Any:
+                if hasattr(obj, "__str__") and not isinstance(obj, (str, int, float, bool, type(None), list, dict)):
+                    return str(obj)
+                return obj
+
+            print(json.dumps(results, indent=2, default=serialize))
         else:
-            print(f"No handoff found for root_span_id: {args.by_span_id}")
-        return
+            formatted = format_results(results)
+            print(formatted)
 
-    # Regular search mode
-    if not args.query:
-        parser.print_help()
-        return
+            if args.save:
+                await save_query(conn, query, formatted, results)
+                print("\n[Query saved for compound learning]")
 
-    query = " ".join(args.query)
 
-    db_path = get_db_path(args.db)
-    if not db_path.exists():
-        print(f"Database not found: {db_path}")
-        print("Run: uv run python scripts/artifact_index.py --all")
-        return
-
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA busy_timeout = 5000")
-
-    # Use dispatch helper for search
-    results = search_dispatch(conn, query, args.type, args.outcome, args.limit)
-
-    if args.json:
-        print(json.dumps(results, indent=2, default=str))
-    else:
-        formatted = format_results(results)
-        print(formatted)
-
-        if args.save:
-            save_query(conn, query, formatted, results)
-            print("\n[Query saved for compound learning]")
-
-    conn.close()
+def main() -> None:
+    """Entry point with asyncio.run() wrapper."""
+    asyncio.run(async_main())
 
 
 if __name__ == "__main__":

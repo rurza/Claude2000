@@ -511,12 +511,20 @@ async def index_handoffs(base_path: Path = Path("thoughts/shared/handoffs")) -> 
         for handoff_file in handoff_files:
             try:
                 data = parse_handoff(handoff_file)
+                # Build searchable text for FTS
+                search_text = " ".join(filter(None, [
+                    data["session_name"],
+                    data["task_summary"],
+                    data["what_worked"],
+                    data["what_failed"],
+                    data["key_decisions"],
+                ]))
                 await conn.execute(
                     """
                     INSERT INTO handoffs
                     (session_name, file_path, goal, what_worked, what_failed,
-                     key_decisions, outcome, root_span_id, session_id)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                     key_decisions, outcome, root_span_id, session_id, search_vector)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_tsvector('english', $10))
                     ON CONFLICT (file_path) DO UPDATE SET
                         goal = EXCLUDED.goal,
                         what_worked = EXCLUDED.what_worked,
@@ -525,6 +533,7 @@ async def index_handoffs(base_path: Path = Path("thoughts/shared/handoffs")) -> 
                         outcome = EXCLUDED.outcome,
                         root_span_id = EXCLUDED.root_span_id,
                         session_id = EXCLUDED.session_id,
+                        search_vector = EXCLUDED.search_vector,
                         indexed_at = NOW()
                     """,
                     data["session_name"],
@@ -536,6 +545,7 @@ async def index_handoffs(base_path: Path = Path("thoughts/shared/handoffs")) -> 
                     data["outcome"],
                     data["root_span_id"],
                     data["session_id"],
+                    search_text,
                 )
                 count += 1
             except Exception as e:
@@ -560,10 +570,18 @@ async def index_plans(base_path: Path = Path("thoughts/shared/plans")) -> int:
         for plan_file in plan_files:
             try:
                 data = parse_plan(plan_file)
+                # Build searchable text for FTS
+                search_text = " ".join(filter(None, [
+                    data["title"],
+                    data["overview"],
+                    data["approach"],
+                    data["phases"],
+                    data["constraints"],
+                ]))
                 await conn.execute(
                     """
-                    INSERT INTO plans (id, title, file_path, overview, approach, phases, constraints)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    INSERT INTO plans (id, title, file_path, overview, approach, phases, constraints, search_vector)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, to_tsvector('english', $8))
                     ON CONFLICT (id) DO UPDATE SET
                         title = EXCLUDED.title,
                         file_path = EXCLUDED.file_path,
@@ -571,6 +589,7 @@ async def index_plans(base_path: Path = Path("thoughts/shared/plans")) -> int:
                         approach = EXCLUDED.approach,
                         phases = EXCLUDED.phases,
                         constraints = EXCLUDED.constraints,
+                        search_vector = EXCLUDED.search_vector,
                         indexed_at = NOW()
                     """,
                     data["id"],
@@ -580,6 +599,7 @@ async def index_plans(base_path: Path = Path("thoughts/shared/plans")) -> int:
                     data["approach"],
                     data["phases"],
                     data["constraints"],
+                    search_text,
                 )
                 count += 1
             except Exception as e:
@@ -600,12 +620,22 @@ async def index_continuity(base_path: Path = Path(".")) -> int:
         for ledger_file in ledger_files:
             try:
                 data = parse_continuity(ledger_file)
+                # Build searchable text for FTS
+                search_text = " ".join(filter(None, [
+                    data["session_name"],
+                    data["goal"],
+                    data["state_done"],
+                    data["state_now"],
+                    data["state_next"],
+                    data["key_learnings"],
+                    data["key_decisions"],
+                ]))
                 await conn.execute(
                     """
                     INSERT INTO continuity
                     (id, session_name, goal, state_done, state_now, state_next,
-                     key_learnings, key_decisions, snapshot_reason)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                     key_learnings, key_decisions, snapshot_reason, search_vector)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_tsvector('english', $10))
                     ON CONFLICT (id) DO UPDATE SET
                         session_name = EXCLUDED.session_name,
                         goal = EXCLUDED.goal,
@@ -615,6 +645,7 @@ async def index_continuity(base_path: Path = Path(".")) -> int:
                         key_learnings = EXCLUDED.key_learnings,
                         key_decisions = EXCLUDED.key_decisions,
                         snapshot_reason = EXCLUDED.snapshot_reason,
+                        search_vector = EXCLUDED.search_vector,
                         indexed_at = NOW()
                     """,
                     data["id"],
@@ -626,6 +657,7 @@ async def index_continuity(base_path: Path = Path(".")) -> int:
                     data["key_learnings"],
                     data["key_decisions"],
                     data["snapshot_reason"],
+                    search_text,
                 )
                 count += 1
             except Exception as e:
