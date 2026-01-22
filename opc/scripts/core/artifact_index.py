@@ -30,7 +30,7 @@ from pathlib import Path
 
 import yaml
 
-# Load .env files for DATABASE_URL (cross-platform)
+# Load .env files for CLAUDE2000_DB_URL (cross-platform)
 try:
     from dotenv import load_dotenv
     # Global ~/.claude/.env
@@ -50,8 +50,8 @@ except ImportError:
 # =============================================================================
 
 def get_postgres_url() -> str | None:
-    """Get PostgreSQL URL from environment variables (canonical first)."""
-    return os.environ.get("CLAUDE2000_DB_URL") or os.environ.get("DATABASE_URL")
+    """Get PostgreSQL URL from environment."""
+    return os.environ.get("CLAUDE2000_DB_URL")
 
 
 def use_postgres() -> bool:

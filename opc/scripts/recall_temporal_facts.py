@@ -26,7 +26,7 @@ Workflow:
 Environment:
     VOYAGE_API_KEY - For Voyage embeddings (default provider)
     COHERE_API_KEY - For Cohere reranking (default reranker)
-    DATABASE_URL - PostgreSQL connection string
+    CLAUDE2000_DB_URL - PostgreSQL connection string (set by installer)
 """
 
 from __future__ import annotations

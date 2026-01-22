@@ -138,29 +138,29 @@ grep -oE '"command":\s*"[^"]*\.sh"' .claude/settings.json 2>/dev/null | \
 ```bash
 echo "=== MEMORY SYSTEM ==="
 
-# Check DATABASE_URL
-if [ -z "$DATABASE_URL" ]; then
-  echo "FAIL: DATABASE_URL not set"
+# Check CLAUDE2000_DB_URL
+if [ -z "$CLAUDE2000_DB_URL" ]; then
+  echo "FAIL: CLAUDE2000_DB_URL not set"
 else
-  echo "PASS: DATABASE_URL is set"
+  echo "PASS: CLAUDE2000_DB_URL is set"
 
   # Test connection
-  if psql "$DATABASE_URL" -c "SELECT 1" > /dev/null 2>&1; then
+  if psql "$CLAUDE2000_DB_URL" -c "SELECT 1" > /dev/null 2>&1; then
     echo "PASS: PostgreSQL reachable"
 
     # Check pgvector
-    if psql "$DATABASE_URL" -c "SELECT extname FROM pg_extension WHERE extname='vector'" 2>/dev/null | grep -q vector; then
+    if psql "$CLAUDE2000_DB_URL" -c "SELECT extname FROM pg_extension WHERE extname='vector'" 2>/dev/null | grep -q vector; then
       echo "PASS: pgvector extension installed"
     else
       echo "FAIL: pgvector extension not installed"
     fi
 
     # Check table exists
-    if psql "$DATABASE_URL" -c "\d archival_memory" > /dev/null 2>&1; then
+    if psql "$CLAUDE2000_DB_URL" -c "\d archival_memory" > /dev/null 2>&1; then
       echo "PASS: archival_memory table exists"
 
       # Count learnings
-      COUNT=$(psql "$DATABASE_URL" -t -c "SELECT COUNT(*) FROM archival_memory" 2>/dev/null | xargs)
+      COUNT=$(psql "$CLAUDE2000_DB_URL" -t -c "SELECT COUNT(*) FROM archival_memory" 2>/dev/null | xargs)
       echo "INFO: $COUNT learnings stored"
     else
       echo "FAIL: archival_memory table missing"

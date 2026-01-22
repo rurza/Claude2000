@@ -31,7 +31,7 @@ Learning Types:
     OPEN_THREAD: Unfinished work/TODOs
 
 Environment:
-    DATABASE_URL: PostgreSQL connection string
+    CLAUDE2000_DB_URL: PostgreSQL connection string (set by installer in ~/.claude/.env)
     VOYAGE_API_KEY: For embeddings (optional, falls back to local)
 """
 
@@ -109,7 +109,7 @@ async def store_learning_v2(
         return {"success": False, "error": "No content provided"}
 
     # Get backend - prefer postgres if connection string is set
-    if os.environ.get("CLAUDE2000_DB_URL") or os.environ.get("DATABASE_URL"):
+    if os.environ.get("CLAUDE2000_DB_URL"):
         backend = "postgres"
     else:
         backend = get_default_backend()
@@ -237,7 +237,7 @@ async def store_learning(
     }
 
     # Get backend - prefer postgres if connection string is set
-    if os.environ.get("CLAUDE2000_DB_URL") or os.environ.get("DATABASE_URL"):
+    if os.environ.get("CLAUDE2000_DB_URL"):
         backend = "postgres"
     else:
         backend = get_default_backend()

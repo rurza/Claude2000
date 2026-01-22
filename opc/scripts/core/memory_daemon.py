@@ -37,7 +37,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env files for DATABASE_URL (cross-platform)
+# Load .env files for CLAUDE2000_DB_URL (cross-platform)
 # 1. Global ~/.claude/.env (API keys, may have DB config)
 global_env = Path.home() / ".claude" / ".env"
 if global_env.exists():
@@ -74,8 +74,8 @@ def log(msg: str):
 
 
 def get_postgres_url() -> str | None:
-    """Get PostgreSQL URL from environment (canonical first)."""
-    return os.environ.get("CLAUDE2000_DB_URL") or os.environ.get("DATABASE_URL")
+    """Get PostgreSQL URL from environment."""
+    return os.environ.get("CLAUDE2000_DB_URL")
 
 
 def use_postgres() -> bool:

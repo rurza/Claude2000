@@ -6,7 +6,7 @@ USAGE: artifact_mark.py --handoff ID --outcome OUTCOME [--notes NOTES]
 
 Mark a handoff with user outcome in the database (PostgreSQL or SQLite).
 
-Supports PostgreSQL (via DATABASE_URL or CLAUDE2000_DB_URL) with
+Supports PostgreSQL (via CLAUDE2000_DB_URL set in ~/.claude/.env) with
 automatic fallback to SQLite for installations without PostgreSQL.
 
 Examples:
@@ -30,7 +30,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env files for DATABASE_URL (cross-platform)
+# Load .env files for CLAUDE2000_DB_URL (cross-platform)
 # 1. Global ~/.claude/.env
 global_env = Path.home() / ".claude" / ".env"
 if global_env.exists():
@@ -43,8 +43,8 @@ if opc_env.exists():
 
 
 def get_postgres_url() -> str | None:
-    """Get PostgreSQL URL from environment if available (canonical first)."""
-    return os.environ.get("CLAUDE2000_DB_URL") or os.environ.get("DATABASE_URL")
+    """Get PostgreSQL URL from environment if available."""
+    return os.environ.get("CLAUDE2000_DB_URL")
 
 
 def get_sqlite_path() -> Path:

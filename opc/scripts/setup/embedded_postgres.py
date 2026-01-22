@@ -448,7 +448,7 @@ async def setup_embedded_environment() -> dict[str, Any]:
 
 
 def generate_database_url(config: dict[str, Any]) -> str:
-    """Generate DATABASE_URL for different modes.
+    """Generate CLAUDE2000_DB_URL connection string for different modes.
 
     Args:
         config: dict with keys:
