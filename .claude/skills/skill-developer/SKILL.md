@@ -62,7 +62,7 @@ cp $CLAUDE_2000_DIR/scripts/multi_tool_pipeline.py $CLAUDE_2000_DIR/scripts/my_p
 Reference the template pattern:
 
 ```bash
-cat $CLAUDE_CC_DIR/.claude/skills/multi-tool-pipeline/SKILL.md
+cat ~/.claude/skills/multi-tool-pipeline/SKILL.md
 cat $CLAUDE_2000_DIR/scripts/multi_tool_pipeline.py
 ```
 
@@ -140,8 +140,8 @@ Add to `.claude/skills/skill-rules.json`:
 For full details, read:
 
 ```bash
-cat $CLAUDE_CC_DIR/.claude/rules/skill-development.md
-cat $CLAUDE_CC_DIR/.claude/rules/mcp-scripts.md
+cat ~/.claude/rules/skill-development.md
+cat ~/.claude/rules/mcp-scripts.md
 ```
 
 ## Quick Checklist
@@ -157,7 +157,7 @@ cat $CLAUDE_CC_DIR/.claude/rules/mcp-scripts.md
 Look at existing skills for patterns:
 
 ```bash
-ls $CLAUDE_CC_DIR/.claude/skills/
-cat $CLAUDE_CC_DIR/.claude/skills/commit/SKILL.md
-cat $CLAUDE_CC_DIR/.claude/skills/firecrawl-scrape/SKILL.md
+ls ~/.claude/skills/
+cat ~/.claude/skills/commit/SKILL.md
+cat ~/.claude/skills/firecrawl-scrape/SKILL.md
 ```
