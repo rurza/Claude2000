@@ -181,14 +181,16 @@ cd opc && docker compose up -d
 
 ### Environment Variables
 
+Set in `~/.claude/.env` by the installer:
+
 ```bash
-# Database
-DATABASE_URL=postgresql://opc:opc_dev_password@localhost:5432/opc
+# Database (required - set by installer)
+CLAUDE2000_DB_URL=postgresql://claude:claude_dev@localhost:5433/continuous_claude
 
 # Embeddings (optional)
 VOYAGE_API_KEY=...
 
-# Memory backend (auto-detected from DATABASE_URL)
+# Memory backend (auto-detected from CLAUDE2000_DB_URL)
 AGENTICA_MEMORY_BACKEND=postgres  # or sqlite
 ```
 
@@ -432,8 +434,8 @@ Troubleshooting:
 # Verify PostgreSQL is running
 docker ps | grep postgres
 
-# Check DATABASE_URL is set
-echo $DATABASE_URL
+# Check CLAUDE2000_DB_URL is set (from ~/.claude/.env)
+echo $CLAUDE2000_DB_URL
 ```
 
 ### Import Errors

@@ -53,7 +53,7 @@ The system automatically selects the appropriate backend:
 - No dependencies: Works offline
 - Good for: Keyword-based recall
 
-**PostgreSQL** (when DATABASE_URL is set)
+**PostgreSQL** (when CLAUDE2000_DB_URL is set in ~/.claude/.env)
 - Search: Vector similarity with pgvector
 - Requires: PostgreSQL with pgvector extension
 - Good for: Semantic similarity search
@@ -262,8 +262,8 @@ Extracts learnings from completed sessions and stores them automatically (if con
 OPENAI_API_KEY=sk-...              # For OpenAI embeddings
 VOYAGE_API_KEY=...                 # For Voyage embeddings
 
-# Database
-DATABASE_URL=postgresql://...       # PostgreSQL connection (enables vector search)
+# Database (set by installer in ~/.claude/.env)
+CLAUDE2000_DB_URL=postgresql://...  # PostgreSQL connection (enables vector search)
 ```
 
 ### Database Setup
@@ -418,10 +418,10 @@ sqlite3 opc/.claude/cache/agentica-memory/memory.db "SELECT COUNT(*) FROM archiv
 **PostgreSQL troubleshooting**:
 ```bash
 # Check connection
-psql $DATABASE_URL -c "SELECT COUNT(*) FROM archival_memory"
+psql "$CLAUDE2000_DB_URL" -c "SELECT COUNT(*) FROM archival_memory"
 
 # Check embeddings exist
-psql $DATABASE_URL -c "SELECT COUNT(*) FROM archival_memory WHERE embedding IS NOT NULL"
+psql "$CLAUDE2000_DB_URL" -c "SELECT COUNT(*) FROM archival_memory WHERE embedding IS NOT NULL"
 ```
 
 ### Embeddings Not Generated

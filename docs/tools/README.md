@@ -478,8 +478,8 @@ cd opc && uv run python scripts/recall_learnings.py --query "test"
 # SQLite: Check database exists
 ls -l opc/.claude/cache/agentica-memory/memory.db
 
-# Postgres: Check connection
-psql $DATABASE_URL -c "SELECT COUNT(*) FROM archival_memory"
+# Postgres: Check connection (CLAUDE2000_DB_URL set in ~/.claude/.env)
+psql "$CLAUDE2000_DB_URL" -c "SELECT COUNT(*) FROM archival_memory"
 ```
 
 ### /prove fails to start
