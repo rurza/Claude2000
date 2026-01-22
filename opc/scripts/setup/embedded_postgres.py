@@ -482,3 +482,121 @@ def generate_database_url(config: dict[str, Any]) -> str:
         return f"postgresql://{user}:{password_encoded}@{host}:{port}/{database}"
     else:
         return f"postgresql://{user}@{host}:{port}/{database}"
+
+
+def check_embedded_postgres_status() -> dict[str, Any]:
+    """Check if embedded postgres is running.
+
+    Returns:
+        dict with keys:
+            - running: bool
+            - pgdata: Path (if found)
+            - socket: Path (if running)
+            - reason: str (if not running)
+    """
+    import os
+
+    pgdata = Path.home() / ".claude" / "pgdata"
+
+    if not pgdata.exists():
+        return {"running": False, "reason": "pgdata directory not found"}
+
+    socket = pgdata / ".s.PGSQL.5432"
+    if not socket.exists():
+        return {"running": False, "reason": "socket file not found", "pgdata": pgdata}
+
+    # Check postmaster.pid for "ready" status
+    pid_file = pgdata / "postmaster.pid"
+    if pid_file.exists():
+        content = pid_file.read_text()
+        if "ready" in content:
+            return {"running": True, "pgdata": pgdata, "socket": socket}
+
+    return {"running": False, "reason": "postgres not ready", "pgdata": pgdata}
+
+
+def apply_schema_if_needed(pgdata: Path, schema_path: Path) -> dict[str, Any]:
+    """Apply schema migration to embedded postgres if needed.
+
+    Uses psql directly to apply the schema. Safe to run multiple times
+    due to IF NOT EXISTS clauses in the schema.
+
+    Args:
+        pgdata: Path to postgres data directory (used as socket host)
+        schema_path: Path to SQL schema file
+
+    Returns:
+        dict with keys:
+            - success: bool
+            - error: str (if failed)
+            - tables_before: int
+            - tables_after: int
+            - warnings: list[str] (optional)
+    """
+    import os
+    import subprocess
+
+    if not schema_path.exists():
+        return {"success": False, "error": f"Schema file not found: {schema_path}"}
+
+    # Get current user for psql connection
+    current_user = os.environ.get("USER", os.environ.get("USERNAME", "postgres"))
+
+    # Count tables before
+    try:
+        result = subprocess.run(
+            ["psql", "-h", str(pgdata), "-U", current_user, "-d", "continuous_claude",
+             "-t", "-c", "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        tables_before = int(result.stdout.strip()) if result.returncode == 0 else 0
+    except Exception:
+        tables_before = 0
+
+    # Apply schema
+    result = subprocess.run(
+        ["psql", "-h", str(pgdata), "-U", current_user, "-d", "continuous_claude",
+         "-f", str(schema_path)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    warnings: list[str] = []
+    if result.returncode != 0:
+        stderr = result.stderr
+        # pg_trgm failure is expected and ok
+        if "pg_trgm" in stderr and "is not available" in stderr:
+            warnings.append("Optional extension pg_trgm not available (ok)")
+        else:
+            return {"success": False, "error": stderr[:200]}
+
+    # Check for pg_trgm warning even on success (it might be in stderr)
+    if "pg_trgm" in result.stderr and "is not available" in result.stderr:
+        if not warnings:  # Avoid duplicates
+            warnings.append("Optional extension pg_trgm not available (ok)")
+
+    # Count tables after
+    try:
+        result = subprocess.run(
+            ["psql", "-h", str(pgdata), "-U", current_user, "-d", "continuous_claude",
+             "-t", "-c", "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        tables_after = int(result.stdout.strip()) if result.returncode == 0 else 0
+    except Exception:
+        tables_after = 0
+
+    result_dict: dict[str, Any] = {
+        "success": True,
+        "tables_before": tables_before,
+        "tables_after": tables_after,
+    }
+    if warnings:
+        result_dict["warnings"] = warnings
+
+    return result_dict

@@ -222,7 +222,7 @@ def run_update() -> None:
         sys.exit(1)
 
     # Step 1: Git pull
-    console.print("[bold]Step 1/4: Pulling latest from GitHub...[/bold]")
+    console.print("[bold]Step 1/6: Pulling latest from GitHub...[/bold]")
     repo_root = opc_dir.parent  # Go up from opc/ to repo root
     success, msg = git_pull(repo_root)
     if success:
@@ -233,7 +233,7 @@ def run_update() -> None:
             sys.exit(1)
 
     # Step 2: Compare files
-    console.print("\n[bold]Step 2/4: Comparing installed files...[/bold]")
+    console.print("\n[bold]Step 2/6: Comparing installed files...[/bold]")
 
     # Source directories are in the repo's .claude/ integration folder
     integration_source = opc_dir.parent / ".claude"
@@ -279,7 +279,7 @@ def run_update() -> None:
             console.print(f"  {subdir}: [dim]not found in source[/dim]")
 
     # Step 3: Apply updates
-    console.print("\n[bold]Step 3/4: Applying updates...[/bold]")
+    console.print("\n[bold]Step 3/6: Applying updates...[/bold]")
 
     if not all_new and not all_updated:
         console.print("  [green]Everything is up to date![/green]")
@@ -315,7 +315,7 @@ def run_update() -> None:
         console.print(f"  [green]OK[/green] Applied {applied} file(s)")
 
     # Step 4: Update pip packages (TLDR, etc.)
-    console.print("\n[bold]Step 4/5: Updating TLDR...[/bold]")
+    console.print("\n[bold]Step 4/6: Updating TLDR...[/bold]")
 
     # Check for local dev install first (monorepo setup)
     tldr_local_venv = opc_dir / "packages" / "tldr-code" / ".venv"
@@ -361,8 +361,39 @@ def run_update() -> None:
     else:
         console.print("  [dim]TLDR not installed, skipping[/dim]")
 
-    # Step 5: Rebuild hooks if needed
-    console.print("\n[bold]Step 5/5: Rebuilding TypeScript hooks...[/bold]")
+    # Step 5: Database schema migration
+    console.print("\n[bold]Step 5/6: Checking database schema...[/bold]")
+
+    from scripts.setup.embedded_postgres import (
+        apply_schema_if_needed,
+        check_embedded_postgres_status,
+    )
+
+    pg_status = check_embedded_postgres_status()
+    if pg_status["running"]:
+        schema_path = opc_dir.parent / "docker" / "init-schema.sql"
+        if schema_path.exists():
+            result = apply_schema_if_needed(pg_status["pgdata"], schema_path)
+            if result["success"]:
+                tables_before = result.get("tables_before", 0)
+                tables_after = result.get("tables_after", 0)
+                if tables_after > tables_before:
+                    console.print(f"  [green]OK[/green] Schema updated ({tables_before} → {tables_after} tables)")
+                else:
+                    console.print(f"  [green]OK[/green] Schema up to date ({tables_after} tables)")
+                if result.get("warnings"):
+                    for w in result["warnings"]:
+                        console.print(f"  [dim]{w}[/dim]")
+            else:
+                console.print(f"  [yellow]WARN[/yellow] {result.get('error', 'Unknown error')}")
+        else:
+            console.print(f"  [yellow]WARN[/yellow] Schema file not found: {schema_path}")
+    else:
+        reason = pg_status.get("reason", "not running")
+        console.print(f"  [dim]Embedded postgres not running ({reason}), skipping[/dim]")
+
+    # Step 6: Rebuild hooks if needed
+    console.print("\n[bold]Step 6/6: Rebuilding TypeScript hooks...[/bold]")
 
     if ts_updated or all_new:
         hooks_dir = claude_dir / "hooks"
