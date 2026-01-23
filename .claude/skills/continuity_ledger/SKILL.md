@@ -107,7 +107,7 @@ Options:
 After the user responds, mark the outcome:
 ```bash
 # Mark the most recent handoff (PostgreSQL)
-cd opc && uv run python scripts/core/artifact_mark.py --latest --outcome <USER_CHOICE>
+cd ~/Local\ Developer/Claude2000/opc && uv run python scripts/core/artifact_mark.py --latest --outcome <USER_CHOICE>
 ```
 
 ### 4. Confirm completion
