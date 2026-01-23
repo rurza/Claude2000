@@ -86,6 +86,8 @@ async def init_postgres() -> None:
         """)
 
         # Create plans table if not exists
+        # SOFT-DEPRECATED: Table exists but not actively populated (0 records as of 2026-01)
+        # Skills use filesystem (thoughts/shared/plans/*.md) directly
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS plans (
                 id TEXT PRIMARY KEY,
@@ -100,6 +102,8 @@ async def init_postgres() -> None:
         """)
 
         # Create continuity table if not exists
+        # SOFT-DEPRECATED: Table exists but not actively populated (0 records as of 2026-01)
+        # Skills use filesystem (thoughts/ledgers/*.md) directly
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS continuity (
                 id TEXT PRIMARY KEY,

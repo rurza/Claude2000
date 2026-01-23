@@ -7,7 +7,7 @@ Before starting implementation tasks, agents should check for relevant learnings
 Agents (kraken, architect, phoenix, spark) should consider running:
 
 ```bash
-cd ~/.claude && PYTHONPATH=. uv run python scripts/core/recall_learnings.py --query "<task keywords>" --k 3 --text-only
+cd opc && uv run python scripts/core/recall_learnings.py --query "<task keywords>" --k 3 --text-only
 ```
 
 This is especially useful when:

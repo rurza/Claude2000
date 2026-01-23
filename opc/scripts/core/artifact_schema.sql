@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS handoffs (
 );
 
 -- Plans (design documents)
+-- SOFT-DEPRECATED: This table exists but is not actively populated.
+-- Only artifact_query.py and artifact_index.py reference it.
+-- Skills use filesystem (thoughts/shared/plans/*.md) directly.
+-- Consider hard deprecation if still unused after 2026-07.
 CREATE TABLE IF NOT EXISTS plans (
     id TEXT PRIMARY KEY,
     session_name TEXT,
@@ -59,6 +63,10 @@ CREATE TABLE IF NOT EXISTS plans (
 );
 
 -- Continuity snapshots (session state at key moments)
+-- SOFT-DEPRECATED: This table exists but is not actively populated.
+-- Only artifact_query.py and artifact_index.py reference it.
+-- Skills use filesystem (thoughts/ledgers/*.md) directly.
+-- Consider hard deprecation if still unused after 2026-07.
 CREATE TABLE IF NOT EXISTS continuity (
     id TEXT PRIMARY KEY,
     session_name TEXT NOT NULL,
