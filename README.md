@@ -4,9 +4,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-orange.svg)](https://claude.ai/code)
-[![Skills](https://img.shields.io/badge/Skills-109-green.svg)](#skills-system)
-[![Agents](https://img.shields.io/badge/Agents-32-purple.svg)](#agents-system)
-[![Hooks](https://img.shields.io/badge/Hooks-30-blue.svg)](#hooks-system)
+[![Skills](https://img.shields.io/badge/Skills-113-green.svg)](#skills-system)
+[![Agents](https://img.shields.io/badge/Agents-48-purple.svg)](#agents-system)
+[![Hooks](https://img.shields.io/badge/Hooks-64-blue.svg)](#hooks-system)
 
 **Claude2000** transforms Claude Code into a continuously learning system that maintains context across sessions, orchestrates specialized agents, and eliminates wasting tokens through intelligent code analysis.
 
@@ -195,14 +195,14 @@ uv run python install.py
 claude
 
 # Try a workflow
-> /workflow
+> /workflow-router
 ```
 
 ### First Session Commands
 
 | Command | What it does |
 |---------|--------------|
-| `/workflow` | Goal-based routing (Research/Plan/Build/Fix) |
+| `/workflow-router` | Goal-based routing (Research/Plan/Build/Fix) |
 | `/fix bug <description>` | Investigate and fix a bug |
 | `/build greenfield <feature>` | Build a new feature from scratch |
 | `/explore` | Understand the codebase |
@@ -411,7 +411,7 @@ Skills are modular capabilities triggered by natural language. Located in `.clau
 
 | Meta-Skill | Chain | Use When |
 |------------|-------|----------|
-| `/workflow` | Router → appropriate workflow | Don't know where to start |
+| `/workflow-router` | Router → appropriate workflow | Don't know where to start |
 | `/build` | discovery → plan → validate → implement → commit | Building features |
 | `/fix` | sleuth → premortem → kraken → test → commit | Fixing bugs |
 | `/tdd` | plan → arbiter (tests) → kraken (implement) → arbiter | Test-first development |
@@ -520,7 +520,7 @@ The `/prove` skill enables machine-verified proofs without learning Lean syntax.
 
 ```
 What do I want to do?
-├── Don't know → /workflow (guided router)
+├── Don't know → /workflow-router (guided router)
 ├── Building → /build greenfield or brownfield
 ├── Fixing → /fix bug
 ├── Understanding → /explore
@@ -884,10 +884,10 @@ curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf 
 
 ## Workflows
 
-### /workflow - Goal-Based Router
+### /workflow-router - Goal-Based Router
 
 ```
-> /workflow
+> /workflow-router
 
 ? What's your goal?
   ○ Research - Understand codebase/docs
