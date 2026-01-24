@@ -34,6 +34,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+# Ensure scripts package is importable regardless of cwd
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Test configurations
 TEST_CASES = {

@@ -23,9 +23,13 @@ import asyncio
 import hashlib
 import json
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+# Ensure scripts package is importable regardless of cwd
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Load .env files for CLAUDE2000_DB_URL
 try:

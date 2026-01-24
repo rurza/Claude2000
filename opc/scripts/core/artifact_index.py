@@ -29,6 +29,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Ensure scripts package is importable regardless of cwd
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 import yaml
 
 # Load .env files for CLAUDE2000_DB_URL

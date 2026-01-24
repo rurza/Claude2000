@@ -33,6 +33,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# Ensure scripts package is importable regardless of cwd
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from dotenv import load_dotenv
 
 # Load .env files

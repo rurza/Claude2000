@@ -17,6 +17,9 @@ import asyncio
 import os
 import sys
 
+# Ensure scripts package is importable regardless of cwd
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 # Load environment from .env file
 try:
     from dotenv import load_dotenv
