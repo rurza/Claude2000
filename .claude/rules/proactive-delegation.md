@@ -73,7 +73,7 @@ Before research tasks, check for prior work:
 
 ```bash
 # Quick memory check
-cd ~/Local\ Developer/Claude2000/opc && uv run python scripts/core/recall_learnings.py --query "<topic>" --k 3 --text-only
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py --query "<topic>" --k 3 --text-only
 ```
 
 If relevant memory found: "I researched this on [date] - reuse or refresh?"

@@ -13,23 +13,23 @@ Query memory proactively when:
 ## How to Recall
 
 ```bash
-cd ~/Local\ Developer/Claude2000/opc && uv run python scripts/core/recall_learnings.py --query "your search terms"
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py --query "your search terms"
 ```
 
 ### Options
 
 ```bash
 # Default: Hybrid RRF search (text + vector combined) - RECOMMENDED
-cd ~/Local\ Developer/Claude2000/opc && uv run python scripts/core/recall_learnings.py --query "authentication patterns"
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py --query "authentication patterns"
 
 # More results
-cd ~/Local\ Developer/Claude2000/opc && uv run python scripts/core/recall_learnings.py --query "error handling" --k 10
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py --query "error handling" --k 10
 
 # Pure vector search (higher similarity scores, 0.4-0.6 range)
-cd ~/Local\ Developer/Claude2000/opc && uv run python scripts/core/recall_learnings.py --query "database schema" --vector-only
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py --query "database schema" --vector-only
 
 # Text-only search (fast, no embeddings)
-cd ~/Local\ Developer/Claude2000/opc && uv run python scripts/core/recall_learnings.py --query "YAML format" --text-only
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py --query "YAML format" --text-only
 ```
 
 ## Backend Architecture
@@ -76,7 +76,7 @@ Use recall to avoid repeating mistakes and leverage past successes.
 When you discover something worth remembering, store it:
 
 ```bash
-cd ~/Local\ Developer/Claude2000/opc && uv run python scripts/core/store_learning.py \
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/store_learning.py \
   --session-id "<short-identifier>" \
   --type <TYPE> \
   --content "<what you learned>" \
@@ -100,7 +100,7 @@ cd ~/Local\ Developer/Claude2000/opc && uv run python scripts/core/store_learnin
 ### Example
 
 ```bash
-cd ~/Local\ Developer/Claude2000/opc && uv run python scripts/core/store_learning.py \
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/store_learning.py \
   --session-id "hook-debugging" \
   --type WORKING_SOLUTION \
   --content "TypeScript hooks require npm install in .claude/hooks/ before they work. The build.sh script compiles TS to JS in dist/." \
