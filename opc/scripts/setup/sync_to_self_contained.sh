@@ -3,12 +3,14 @@
 #
 # Usage: ./sync_to_self_contained.sh
 #
-# Syncs from: ~/Local Developer/Claude2000/opc/
+# Syncs from: <repo>/opc/ (auto-detected from script location)
 # Syncs to:   ~/.claude/claude2000/
 
 set -e
 
-DEV_DIR="$HOME/Local Developer/Claude2000/opc"
+# Resolve dev dir from this script's location (scripts/setup/ -> opc root)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DEV_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SELF_CONTAINED="$HOME/.claude/claude2000"
 
 # Colors for output
