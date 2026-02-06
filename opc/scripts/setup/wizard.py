@@ -695,7 +695,7 @@ async def run_setup_wizard() -> None:
 
             # Verify schema was applied
             from scripts.setup.embedded_postgres import apply_schema_if_needed
-            verify = apply_schema_if_needed(pgdata, schema_path)
+            verify = apply_schema_if_needed(pgdata, schema_path, venv_path=venv)
             if verify["success"]:
                 tables = verify.get("tables_after", 0)
                 console.print(f"  [green]OK[/green] Schema verified ({tables} tables)")

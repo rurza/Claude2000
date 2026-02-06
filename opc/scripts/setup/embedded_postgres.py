@@ -571,7 +571,7 @@ def check_embedded_postgres_status() -> dict[str, Any]:
     return {"running": False, "reason": "postgres not ready", "pgdata": pgdata}
 
 
-def apply_schema_if_needed(pgdata: Path, schema_path: Path) -> dict[str, Any]:
+def apply_schema_if_needed(pgdata: Path, schema_path: Path, venv_path: Path | None = None) -> dict[str, Any]:
     """Apply schema migration to embedded postgres if needed.
 
     Uses psql directly to apply the schema. Safe to run multiple times
@@ -580,6 +580,8 @@ def apply_schema_if_needed(pgdata: Path, schema_path: Path) -> dict[str, Any]:
     Args:
         pgdata: Path to postgres data directory (used as socket host)
         schema_path: Path to SQL schema file
+        venv_path: Path to pgserver venv (contains postgres binaries).
+                   If None, falls back to system psql.
 
     Returns:
         dict with keys:
@@ -589,11 +591,20 @@ def apply_schema_if_needed(pgdata: Path, schema_path: Path) -> dict[str, Any]:
             - tables_after: int
             - warnings: list[str] (optional)
     """
+    import glob
     import os
     import subprocess
 
     if not schema_path.exists():
         return {"success": False, "error": f"Schema file not found: {schema_path}"}
+
+    # Find psql binary - prefer pgserver venv, fall back to system
+    psql_cmd = "psql"
+    if venv_path:
+        pgserver_pattern = str(venv_path / "lib" / "python*" / "site-packages" / "pgserver" / "pginstall" / "bin" / "psql")
+        matches = glob.glob(pgserver_pattern)
+        if matches:
+            psql_cmd = matches[0]
 
     # Get current user for psql connection
     current_user = os.environ.get("USER", os.environ.get("USERNAME", "postgres"))
@@ -601,7 +612,7 @@ def apply_schema_if_needed(pgdata: Path, schema_path: Path) -> dict[str, Any]:
     # Count tables before
     try:
         result = subprocess.run(
-            ["psql", "-h", str(pgdata), "-p", "5433", "-U", current_user, "-d", "continuous_claude",
+            [psql_cmd, "-h", str(pgdata), "-p", "5433", "-U", current_user, "-d", "continuous_claude",
              "-t", "-c", "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';"],
             capture_output=True,
             text=True,
@@ -613,7 +624,7 @@ def apply_schema_if_needed(pgdata: Path, schema_path: Path) -> dict[str, Any]:
 
     # Apply schema
     result = subprocess.run(
-        ["psql", "-h", str(pgdata), "-p", "5433", "-U", current_user, "-d", "continuous_claude",
+        [psql_cmd, "-h", str(pgdata), "-p", "5433", "-U", current_user, "-d", "continuous_claude",
          "-f", str(schema_path)],
         capture_output=True,
         text=True,
@@ -637,7 +648,7 @@ def apply_schema_if_needed(pgdata: Path, schema_path: Path) -> dict[str, Any]:
     # Count tables after
     try:
         result = subprocess.run(
-            ["psql", "-h", str(pgdata), "-p", "5433", "-U", current_user, "-d", "continuous_claude",
+            [psql_cmd, "-h", str(pgdata), "-p", "5433", "-U", current_user, "-d", "continuous_claude",
              "-t", "-c", "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';"],
             capture_output=True,
             text=True,
