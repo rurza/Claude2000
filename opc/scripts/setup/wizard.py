@@ -625,7 +625,6 @@ async def run_setup_wizard() -> None:
                     console.print(f"  [dim]PostgreSQL stop: {e}[/dim]")
 
         # Remove ~/.claude entirely
-        import shutil
         try:
             shutil.rmtree(global_claude)
             console.print("  [green]OK[/green] Removed ~/.claude")
