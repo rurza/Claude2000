@@ -70,9 +70,25 @@ path = thoughts/shared/handoffs/{session_name}/current.md
 | omit_learnings | -inf | Loses context | required section |
 | skip_postmortem | -inf | No artifact indexing | required for queryability |
 
-### P3: Mark Session Outcome
+### P3: Index Handoff in Database
+```
+eta |-> index_handoff_file
+```
+```bash
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/artifact_index.py --file {handoff_file_path}
+```
+
+| action | Q | why | mitigation |
+|--------|---|-----|------------|
+| skip_indexing | -inf | artifact_mark fails on empty DB | required before P4 |
+| index_all | LOW | Slow, indexes everything | use --file for single file |
+
+### P4: Mark Session Outcome
 ```
 eta |-> ask_user_outcome -> mark_in_db
+```
+```bash
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/artifact_mark.py --latest --outcome {OUTCOME}
 ```
 
 | action | Q | why | mitigation |
@@ -80,16 +96,16 @@ eta |-> ask_user_outcome -> mark_in_db
 | guess_outcome | -inf | Wrong data for ML | always ask user |
 | skip_marking | LOW | No outcome tracking | acceptable if DB missing |
 
-### P4: Confirm Completion
+### P5: Confirm Completion
 ```
 eta |-> respond_with_resume_command
 ```
 
 ## beta (Termination)
 ```
-beta(eta) = 1.0 if handoff_written AND outcome_marked
+beta(eta) = 1.0 if handoff_written AND handoff_indexed AND outcome_marked
 ```
-success: [handoff_file_exists, outcome_recorded, user_confirmed]
+success: [handoff_file_exists, handoff_indexed_in_db, outcome_recorded, user_confirmed]
 failure: [write_error, no_session_name, user_cancelled]
 
 ## Output Schema
