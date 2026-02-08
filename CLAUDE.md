@@ -323,62 +323,52 @@ opc/
 
 ## TLDR-Code: Token-Efficient Code Analysis
 
-The project includes **tldr-code** (llm-tldr) for token-efficient code analysis with **95% token savings** vs raw file reads.
+The project includes **tldr-code** (llm-tldr) as a project dependency for token-efficient code analysis with **95% token savings** vs raw file reads.
 
-### Installation (Automatic)
+### Installation
 
-TLDR-Code is automatically installed when running:
-```bash
-cd opc && uv run python -m scripts.setup.update  # Full update
-```
-
-This installs llm-tldr and attempts to create a symlink at `/usr/local/bin/tldr` pointing to `~/.venv/bin/tldr`, making it available in Claude Code's subprocess PATH.
-
-### Manual Installation (if symlink fails)
+`llm-tldr` is listed in `opc/pyproject.toml` and installed automatically via `uv sync`. A wrapper script at `.claude/scripts/tldr` resolves to the venv binary, so no system-wide symlinks or `uv tool install` are needed.
 
 ```bash
-# Install the package
-uv pip install llm-tldr
+# Install/update (happens automatically during setup/update)
+cd opc && uv sync
 
-# Create the symlink (requires sudo)
-sudo ln -sf ~/.venv/bin/tldr /usr/local/bin/tldr
-
-# Or run the setup script
-bash opc/scripts/setup/install_tldr_code.sh
+# The wrapper is installed to ~/.claude/claude2000/scripts/tldr-cli
+~/.claude/claude2000/scripts/tldr-cli --help
 ```
 
 ### Usage in Claude Code
 
 ```bash
 # File tree
-tldr tree src/
+~/.claude/claude2000/scripts/tldr-cli tree src/
 
 # Code structure (functions, classes, imports)
-tldr structure . --lang python
+~/.claude/claude2000/scripts/tldr-cli structure . --lang python
 
 # Reverse call graph (who calls a function)
-tldr impact function_name .
+~/.claude/claude2000/scripts/tldr-cli impact function_name .
 
 # LLM-ready context (follows call graph)
-tldr context main --project . --depth 2
+~/.claude/claude2000/scripts/tldr-cli context main --project . --depth 2
 
 # Control flow graph
-tldr cfg src/file.py function_name
+~/.claude/claude2000/scripts/tldr-cli cfg src/file.py function_name
 
 # Data flow graph
-tldr dfg src/file.py function_name
+~/.claude/claude2000/scripts/tldr-cli dfg src/file.py function_name
 
 # Find dead code
-tldr dead src/
+~/.claude/claude2000/scripts/tldr-cli dead src/
 
 # Detect architecture layers
-tldr arch src/
+~/.claude/claude2000/scripts/tldr-cli arch src/
 
 # Type check + lint
-tldr diagnostics src/
+~/.claude/claude2000/scripts/tldr-cli diagnostics src/
 
 # Find affected tests
-tldr change-impact --git
+~/.claude/claude2000/scripts/tldr-cli change-impact --git
 ```
 
 ### The 5-Layer Stack
@@ -393,31 +383,18 @@ Layer 5: PDG         +150 tokens   Dependencies, slicing
 Total:              ~1,200 tokens  vs 23,000 raw = 95% savings
 ```
 
-### Verification & Testing
+### Verification
 
-Verify tldr-code is working:
 ```bash
-# Check package is installed
-uv pip show llm-tldr
+# Check package is installed in project venv
+cd opc && uv run python -c "import tldr_code; print('OK')"
 
-# Verify symlink exists
-ls -la /usr/local/bin/tldr
-
-# Test it's the correct binary
-tldr --help | grep "Token-efficient"
+# Test wrapper resolves correctly
+~/.claude/claude2000/scripts/tldr-cli --help
 
 # Test code analysis works
-tldr structure . --lang python | head -20
+~/.claude/claude2000/scripts/tldr-cli structure . --lang python | head -20
 ```
-
-Run installation tests:
-```bash
-cd opc && uv run pytest tests/test_tldr_installation.py -v
-```
-
-Troubleshooting:
-- If symlink fails: `sudo ln -sf ~/.venv/bin/tldr /usr/local/bin/tldr`
-- If wrong tldr: Ensure `uv pip install llm-tldr` not `tldr` (man-page)
 
 ## Common Issues
 

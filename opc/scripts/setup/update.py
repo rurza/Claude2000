@@ -315,52 +315,40 @@ def run_update() -> None:
 
         console.print(f"  [green]OK[/green] Applied {applied} file(s)")
 
-    # Step 4: Update pip packages (TLDR, etc.)
-    console.print("\n[bold]Step 4/6: Updating TLDR...[/bold]")
+    # Step 4: Sync project dependencies (installs llm-tldr, etc.)
+    console.print("\n[bold]Step 4/6: Syncing project dependencies...[/bold]")
+    try:
+        result = subprocess.run(
+            ["uv", "sync"],
+            cwd=opc_dir,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            console.print("  [green]OK[/green] Dependencies synced")
+        else:
+            console.print(f"  [yellow]WARN[/yellow] uv sync failed: {result.stderr[:100]}")
+    except Exception as e:
+        console.print(f"  [yellow]WARN[/yellow] uv sync failed: {e}")
 
-    # Check for local dev install first (monorepo setup)
-    tldr_local_venv = opc_dir / "packages" / "tldr-code" / ".venv"
-    tldr_local_pkg = opc_dir / "packages" / "tldr-code"
-
-    if tldr_local_venv.exists() and (tldr_local_pkg / "pyproject.toml").exists():
-        # Dev install - reinstall from local source (git pull already updated it)
-        console.print("  [dim]Detected local dev install[/dim]")
-        console.print("  Reinstalling from local source...")
+    # Install llm-tldr into ~/.claude/claude2000/.venv so the wrapper script can find it
+    claude2000_venv = claude_dir / "claude2000" / ".venv"
+    if claude2000_venv.exists():
         try:
             result = subprocess.run(
-                ["uv", "pip", "install", "-e", "."],
-                cwd=tldr_local_pkg,
+                ["uv", "pip", "install", "--python",
+                 str(claude2000_venv / "bin" / "python"), "llm-tldr"],
                 capture_output=True,
                 text=True,
                 timeout=120,
             )
             if result.returncode == 0:
-                console.print("  [green]OK[/green] TLDR dev install updated")
+                console.print("  [green]OK[/green] TLDR available via wrapper")
             else:
-                console.print(f"  [yellow]WARN[/yellow] {result.stderr[:100]}")
+                console.print(f"  [yellow]WARN[/yellow] TLDR wrapper install: {result.stderr[:100]}")
         except Exception as e:
-            console.print(f"  [yellow]WARN[/yellow] {e}")
-    elif shutil.which("tldr"):
-        # PyPI install - update from PyPI
-        console.print("  Updating from PyPI...")
-        try:
-            result = subprocess.run(
-                ["uv", "pip", "install", "--upgrade", "llm-tldr"],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if result.returncode == 0:
-                if "already satisfied" in result.stdout.lower():
-                    console.print("  [dim]TLDR already up to date[/dim]")
-                else:
-                    console.print("  [green]OK[/green] TLDR updated")
-            else:
-                console.print(f"  [yellow]WARN[/yellow] {result.stderr[:100]}")
-        except Exception as e:
-            console.print(f"  [yellow]WARN[/yellow] {e}")
-    else:
-        console.print("  [dim]TLDR not installed, skipping[/dim]")
+            console.print(f"  [yellow]WARN[/yellow] TLDR wrapper install: {e}")
 
     # Step 5: Database schema migration
     console.print("\n[bold]Step 5/6: Checking database schema...[/bold]")

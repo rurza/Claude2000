@@ -1,0 +1,10 @@
+#!/bin/bash
+# Wrapper for tldr (llm-tldr) - resolves to the project venv binary.
+# Installed to ~/.claude/claude2000/scripts/tldr-cli by the OPC updater.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV_TLDR="${SCRIPT_DIR}/../.venv/bin/tldr"
+if [ -x "$VENV_TLDR" ]; then
+    exec "$VENV_TLDR" "$@"
+fi
+echo "Error: tldr not found at $VENV_TLDR. Run: cd ~/.claude/claude2000 && uv sync" >&2
+exit 1

@@ -1,51 +1,53 @@
 # TLDR CLI - Code Analysis Tool
 
-You have `tldr` available on PATH for token-efficient code analysis.
+You have `tldr` available via the project wrapper at `~/.claude/claude2000/scripts/tldr-cli`.
+
+**Always invoke as:** `~/.claude/claude2000/scripts/tldr-cli` (not bare `tldr`).
 
 ## Commands
 
 ```bash
 # Core analysis
-tldr tree [path]                    # File tree
-tldr structure [path] --lang <lang> # Code structure (codemaps)
-tldr search <pattern> [path]        # Search files
-tldr extract <file>                 # Full file info
-tldr context <entry> --project .    # LLM-ready context
+~/.claude/claude2000/scripts/tldr-cli tree [path]                    # File tree
+~/.claude/claude2000/scripts/tldr-cli structure [path] --lang <lang> # Code structure (codemaps)
+~/.claude/claude2000/scripts/tldr-cli search <pattern> [path]        # Search files
+~/.claude/claude2000/scripts/tldr-cli extract <file>                 # Full file info
+~/.claude/claude2000/scripts/tldr-cli context <entry> --project .    # LLM-ready context
 
 # Flow analysis
-tldr cfg <file> <function>          # Control flow graph
-tldr dfg <file> <function>          # Data flow graph
-tldr slice <file> <func> <line>     # Program slice
-tldr calls [path]                   # Cross-file call graph
+~/.claude/claude2000/scripts/tldr-cli cfg <file> <function>          # Control flow graph
+~/.claude/claude2000/scripts/tldr-cli dfg <file> <function>          # Data flow graph
+~/.claude/claude2000/scripts/tldr-cli slice <file> <func> <line>     # Program slice
+~/.claude/claude2000/scripts/tldr-cli calls [path]                   # Cross-file call graph
 
 # Codebase analysis
-tldr impact <func> [path]           # Who calls this function? (reverse call graph)
-tldr dead [path]                    # Find unreachable/dead code
-tldr arch [path]                    # Detect architectural layers
+~/.claude/claude2000/scripts/tldr-cli impact <func> [path]           # Who calls this function? (reverse call graph)
+~/.claude/claude2000/scripts/tldr-cli dead [path]                    # Find unreachable/dead code
+~/.claude/claude2000/scripts/tldr-cli arch [path]                    # Detect architectural layers
 
 # Import analysis
-tldr imports <file>                 # Parse imports from a file
-tldr importers <module> [path]      # Find all files that import a module
+~/.claude/claude2000/scripts/tldr-cli imports <file>                 # Parse imports from a file
+~/.claude/claude2000/scripts/tldr-cli importers <module> [path]      # Find all files that import a module
 
-# Quality & testing (NEW)
-tldr diagnostics <file|path>        # Type check + lint (pyright/ruff)
-tldr change-impact [files...]       # Find tests affected by changes
+# Quality & testing
+~/.claude/claude2000/scripts/tldr-cli diagnostics <file|path>        # Type check + lint (pyright/ruff)
+~/.claude/claude2000/scripts/tldr-cli change-impact [files...]       # Find tests affected by changes
 ```
 
 ## When to Use
 
-- **Before reading files**: Run `tldr structure .` to see what exists
-- **Finding code**: Use `tldr search "pattern"` instead of grep for structured results
-- **Understanding functions**: Use `tldr cfg` for complexity, `tldr dfg` for data flow
-- **Debugging**: Use `tldr slice file.py func 42` to find what affects line 42
-- **Context for tasks**: Use `tldr context entry_point` to get relevant code
-- **Impact analysis**: Use `tldr impact func_name` before refactoring to see what would break
-- **Dead code**: Use `tldr dead src/` to find unused functions for cleanup
-- **Architecture**: Use `tldr arch src/` to understand layer structure
-- **Import tracking**: Use `tldr imports file.py` to see what a file imports
-- **Reverse imports**: Use `tldr importers module_name src/` to find who imports a module
-- **Before tests**: Use `tldr diagnostics .` to catch type errors before running tests
-- **Selective testing**: Use `tldr change-impact` to run only affected tests
+- **Before reading files**: Run `~/.claude/claude2000/scripts/tldr-cli structure .` to see what exists
+- **Finding code**: Use `~/.claude/claude2000/scripts/tldr-cli search "pattern"` instead of grep for structured results
+- **Understanding functions**: Use `~/.claude/claude2000/scripts/tldr-cli cfg` for complexity, `dfg` for data flow
+- **Debugging**: Use `~/.claude/claude2000/scripts/tldr-cli slice file.py func 42` to find what affects line 42
+- **Context for tasks**: Use `~/.claude/claude2000/scripts/tldr-cli context entry_point` to get relevant code
+- **Impact analysis**: Use `~/.claude/claude2000/scripts/tldr-cli impact func_name` before refactoring to see what would break
+- **Dead code**: Use `~/.claude/claude2000/scripts/tldr-cli dead src/` to find unused functions for cleanup
+- **Architecture**: Use `~/.claude/claude2000/scripts/tldr-cli arch src/` to understand layer structure
+- **Import tracking**: Use `~/.claude/claude2000/scripts/tldr-cli imports file.py` to see what a file imports
+- **Reverse imports**: Use `~/.claude/claude2000/scripts/tldr-cli importers module_name src/` to find who imports a module
+- **Before tests**: Use `~/.claude/claude2000/scripts/tldr-cli diagnostics .` to catch type errors before running tests
+- **Selective testing**: Use `~/.claude/claude2000/scripts/tldr-cli change-impact` to run only affected tests
 
 ## Languages
 
@@ -55,41 +57,41 @@ Supports: `python`, `typescript`, `go`, `rust`
 
 ```bash
 # 1. See project structure
-tldr tree src/ --ext .py
+~/.claude/claude2000/scripts/tldr-cli tree src/ --ext .py
 
 # 2. Find relevant code
-tldr search "process_data" src/
+~/.claude/claude2000/scripts/tldr-cli search "process_data" src/
 
 # 3. Get context for a function
-tldr context process_data --project src/ --depth 2
+~/.claude/claude2000/scripts/tldr-cli context process_data --project src/ --depth 2
 
 # 4. Understand control flow
-tldr cfg src/processor.py process_data
+~/.claude/claude2000/scripts/tldr-cli cfg src/processor.py process_data
 
 # 5. Before refactoring - check impact
-tldr impact process_data src/ --depth 3
+~/.claude/claude2000/scripts/tldr-cli impact process_data src/ --depth 3
 
 # 6. Find dead code to clean up
-tldr dead src/ --entry main cli
+~/.claude/claude2000/scripts/tldr-cli dead src/ --entry main cli
 ```
 
 ## Codebase Analysis Commands
 
 ### Impact Analysis
 ```bash
-tldr impact <function> [path] --depth N --file <filter>
+~/.claude/claude2000/scripts/tldr-cli impact <function> [path] --depth N --file <filter>
 ```
 Shows reverse call graph - all functions that call the target. Useful before refactoring.
 
 ### Dead Code Detection
 ```bash
-tldr dead [path] --entry <patterns>
+~/.claude/claude2000/scripts/tldr-cli dead [path] --entry <patterns>
 ```
 Finds functions never called (excluding entry points like main, test_, etc.)
 
 ### Architecture Detection
 ```bash
-tldr arch [path]
+~/.claude/claude2000/scripts/tldr-cli arch [path]
 ```
 Analyzes call patterns to detect:
 - Entry layer (controllers/handlers)
@@ -99,32 +101,32 @@ Analyzes call patterns to detect:
 
 ### Import Analysis
 ```bash
-tldr imports <file> [--lang python]
+~/.claude/claude2000/scripts/tldr-cli imports <file> [--lang python]
 ```
 Parses all import statements from a file. Returns JSON with module names, imported names, aliases.
 
 ### Reverse Import Lookup
 ```bash
-tldr importers <module> [path] [--lang python]
+~/.claude/claude2000/scripts/tldr-cli importers <module> [path] [--lang python]
 ```
 Finds all files that import a given module. Complements `tldr impact` which tracks function *calls* - this tracks *imports*.
 
 ### Diagnostics (Type Check + Lint)
 ```bash
-tldr diagnostics <file>              # Single file
-tldr diagnostics . --project         # Whole project
-tldr diagnostics src/ --format text  # Human-readable output
-tldr diagnostics src/ --no-lint      # Type check only
+~/.claude/claude2000/scripts/tldr-cli diagnostics <file>              # Single file
+~/.claude/claude2000/scripts/tldr-cli diagnostics . --project         # Whole project
+~/.claude/claude2000/scripts/tldr-cli diagnostics src/ --format text  # Human-readable output
+~/.claude/claude2000/scripts/tldr-cli diagnostics src/ --no-lint      # Type check only
 ```
 Runs pyright (types) + ruff (lint) and returns structured errors. Use before tests to catch type errors early.
 
 ### Change Impact (Selective Testing)
 ```bash
-tldr change-impact                   # Auto-detect (session/git)
-tldr change-impact src/foo.py        # Explicit files
-tldr change-impact --session         # Session-modified files
-tldr change-impact --git             # Git diff files
-tldr change-impact --run             # Actually run affected tests
+~/.claude/claude2000/scripts/tldr-cli change-impact                   # Auto-detect (session/git)
+~/.claude/claude2000/scripts/tldr-cli change-impact src/foo.py        # Explicit files
+~/.claude/claude2000/scripts/tldr-cli change-impact --session         # Session-modified files
+~/.claude/claude2000/scripts/tldr-cli change-impact --git             # Git diff files
+~/.claude/claude2000/scripts/tldr-cli change-impact --run             # Actually run affected tests
 ```
 Finds which tests to run based on changed code. Uses call graph + import analysis.
 

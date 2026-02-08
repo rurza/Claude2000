@@ -1,6 +1,6 @@
 # Prefer TLDR Over Grep
 
-**For code searches, use `tldr search` instead of the Grep tool.**
+**For code searches, use `~/.claude/claude2000/scripts/tldr-cli search` instead of the Grep tool.**
 
 ## Why
 
@@ -12,9 +12,9 @@
 
 | Instead of | Use |
 |------------|-----|
-| `Grep` tool with pattern | `tldr search "pattern" .` via Bash |
-| `Grep` for function names | `tldr search "function_name" .` |
-| `Grep` for class definitions | `tldr search "ClassName" .` |
+| `Grep` tool with pattern | `~/.claude/claude2000/scripts/tldr-cli search "pattern" .` via Bash |
+| `Grep` for function names | `~/.claude/claude2000/scripts/tldr-cli search "function_name" .` |
+| `Grep` for class definitions | `~/.claude/claude2000/scripts/tldr-cli search "ClassName" .` |
 
 ## When to Use Grep
 
@@ -27,7 +27,7 @@ Only use the Grep tool when:
 
 ```bash
 # Good - use tldr for code searches
-tldr search "authenticate" .
+~/.claude/claude2000/scripts/tldr-cli search "authenticate" .
 
 # Only if tldr fails, fall back to Grep tool
 ```

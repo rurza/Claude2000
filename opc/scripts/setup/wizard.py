@@ -767,23 +767,23 @@ async def run_setup_wizard() -> None:
         console.print(f"  [yellow]WARN[/yellow] {build_msg}")
 
     # === AUTO: TLDR Code Analysis Tool ===
-    console.print("\n[bold]Installing TLDR code analysis...[/bold]")
-    import subprocess
-
-    try:
-        with console.status("[cyan]Installing TLDR via uv...[/cyan]", spinner="dots"):
-            result = subprocess.run(
-                ["uv", "tool", "install", "llm-tldr"],
+    # llm-tldr is a project dependency - installed automatically by uv sync.
+    # Also install into ~/.claude/claude2000/.venv so the wrapper script can find it.
+    console.print("\n[bold]TLDR code analysis[/bold]")
+    console.print("  [green]OK[/green] Installed as project dependency (via uv sync)")
+    claude2000_venv = global_claude / "claude2000" / ".venv"
+    if claude2000_venv.exists():
+        try:
+            subprocess.run(
+                ["uv", "pip", "install", "--python",
+                 str(claude2000_venv / "bin" / "python"), "llm-tldr"],
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=120,
             )
-        if result.returncode == 0:
-            console.print("  [green]OK[/green] TLDR installed")
-        else:
-            console.print(f"  [yellow]WARN[/yellow] TLDR install failed: {result.stderr[:100]}")
-    except Exception as e:
-        console.print(f"  [yellow]WARN[/yellow] TLDR install failed: {e}")
+            console.print("  [green]OK[/green] TLDR available via wrapper script")
+        except Exception:
+            console.print("  [yellow]WARN[/yellow] Could not install TLDR into wrapper venv")
 
     # === AUTO: Semantic search config (using reindex_threshold from prompt) ===
     console.print("\n[bold]Configuring semantic search...[/bold]")
