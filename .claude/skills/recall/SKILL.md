@@ -33,7 +33,7 @@ Query the memory system for relevant learnings from past sessions.
 When this skill is invoked, run:
 
 ```bash
-cd ~/Local\ Developer/Claude2000/opc && uv run python scripts/core/recall_learnings.py --query "<ARGS>" --k 5
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py --query "<ARGS>" --k 5
 ```
 
 Where `<ARGS>` is the query provided by the user.

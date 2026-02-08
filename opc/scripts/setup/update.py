@@ -332,19 +332,20 @@ def run_update() -> None:
     except Exception as e:
         console.print(f"  [yellow]WARN[/yellow] uv sync failed: {e}")
 
-    # Install llm-tldr into ~/.claude/claude2000/.venv so the wrapper script can find it
+    # Install runtime deps into ~/.claude/claude2000/.venv for self-contained operation
     claude2000_venv = claude_dir / "claude2000" / ".venv"
     if claude2000_venv.exists():
         try:
             result = subprocess.run(
                 ["uv", "pip", "install", "--python",
-                 str(claude2000_venv / "bin" / "python"), "llm-tldr"],
+                 str(claude2000_venv / "bin" / "python"),
+                 "llm-tldr", "psycopg2-binary", "aiofiles"],
                 capture_output=True,
                 text=True,
                 timeout=120,
             )
             if result.returncode == 0:
-                console.print("  [green]OK[/green] TLDR available via wrapper")
+                console.print("  [green]OK[/green] Runtime deps installed (tldr, psycopg2, aiofiles)")
             else:
                 console.print(f"  [yellow]WARN[/yellow] TLDR wrapper install: {result.stderr[:100]}")
         except Exception as e:

@@ -172,7 +172,7 @@ fi
 
 # Check Python dependencies
 echo "Checking Python dependencies..."
-(cd ~/Local\ Developer/Claude2000/opc && uv run python -c "import psycopg2; import pgvector; import sentence_transformers" 2>/dev/null) && \
+(cd ~/.claude/claude2000 && .venv/bin/python -c "import asyncpg; import sentence_transformers" 2>/dev/null) && \
   echo "PASS: Python dependencies available" || \
   echo "WARN: Some Python dependencies missing"
 ```

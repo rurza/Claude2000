@@ -776,7 +776,8 @@ async def run_setup_wizard() -> None:
         try:
             subprocess.run(
                 ["uv", "pip", "install", "--python",
-                 str(claude2000_venv / "bin" / "python"), "llm-tldr"],
+                 str(claude2000_venv / "bin" / "python"),
+                 "llm-tldr", "psycopg2-binary", "aiofiles"],
                 capture_output=True,
                 text=True,
                 timeout=120,

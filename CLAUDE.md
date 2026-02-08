@@ -5,7 +5,19 @@ This is the **OPC (Open Protocol Claude)** v3 project - a continuity kit for mul
 ## Quick Start
 
 ```bash
-# Run the setup wizard (recommended first step)
+# Search past learnings
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py --query "hooks patterns"
+
+# Store a new learning
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/store_learning.py --session-id "session123" \
+    --type WORKING_SOLUTION --content "Hook pattern works well" \
+    --context "hook development" --tags "hooks,patterns" --confidence high
+```
+
+### Developer Only (requires repo checkout)
+
+```bash
+# Run the setup wizard
 cd opc && uv run python -m scripts.setup.wizard
 
 # Start Docker services (PostgreSQL + Redis + PgBouncer)
@@ -13,14 +25,6 @@ cd opc && docker compose up -d
 
 # Run a script with MCP tools available
 cd opc && uv run python -m runtime.harness /path/to/script.py
-
-# Search past learnings
-cd opc && uv run python scripts/core/recall_learnings.py --query "hooks patterns"
-
-# Store a new learning
-cd opc && uv run python scripts/core/store_learning.py --session-id "session123" \
-    --type WORKING_SOLUTION --content "Hook pattern works well" \
-    --context "hook development" --tags "hooks,patterns" --confidence high
 ```
 
 ## Architecture Overview
@@ -145,7 +149,7 @@ CREATE TABLE blackboard (
 
 ```bash
 # Store with type, context, tags
-cd opc && uv run python scripts/core/store_learning.py \
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/store_learning.py \
     --session-id "session123" \
     --type WORKING_SOLUTION \
     --content "Hook pattern X works for Y" \
@@ -158,13 +162,13 @@ cd opc && uv run python scripts/core/store_learning.py \
 
 ```bash
 # Semantic search (hybrid RRF + optional reranking)
-cd opc && uv run python scripts/core/recall_learnings.py --query "authentication patterns"
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py --query "authentication patterns"
 
 # Text-only (fast, no embeddings)
-cd opc && uv run python scripts/core/recall_learnings.py --query "hooks" --text-only
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py --query "hooks" --text-only
 
 # Vector-only with recency boost
-cd opc && uv run python scripts/core/recall_learnings.py --query "hooks" --vector-only --recency 0.3
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py --query "hooks" --vector-only --recency 0.3
 ```
 
 ## Docker Services
@@ -197,17 +201,21 @@ AGENTICA_MEMORY_BACKEND=postgres  # or sqlite
 ## Development Commands
 
 ```bash
-# Install dependencies (run from opc directory)
+# Search memories
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py -q "pattern"
+
+# Store a learning
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/store_learning.py --session-id "test" --type CODEBASE_PATTERN --content "..." --context "..."
+```
+
+### Developer Only (requires repo checkout)
+
+```bash
+# Install dependencies
 cd opc && uv sync
 
 # Run a script with MCP tools
 cd opc && uv run python -m runtime.harness /path/to/script.py
-
-# Search memories
-cd opc && PYTHONPATH=. uv run python scripts/core/recall_learnings.py -q "pattern"
-
-# Store a learning
-cd opc && PYTHONPATH=. uv run python scripts/core/store_learning.py --session-id "test" --type CODEBASE_PATTERN --content "..." --context "..."
 
 # Run tests
 cd opc && uv run pytest
@@ -331,8 +339,7 @@ The project includes **tldr-code** (llm-tldr) as a project dependency for token-
 
 ```bash
 # Install/update (happens automatically during setup/update)
-cd opc && uv sync
-
+# Developer: cd opc && uv sync
 # The wrapper is installed to ~/.claude/claude2000/scripts/tldr-cli
 ~/.claude/claude2000/scripts/tldr-cli --help
 ```
@@ -386,8 +393,8 @@ Total:              ~1,200 tokens  vs 23,000 raw = 95% savings
 ### Verification
 
 ```bash
-# Check package is installed in project venv
-cd opc && uv run python -c "import tldr_code; print('OK')"
+# Check package is installed in installed venv
+cd ~/.claude/claude2000 && .venv/bin/python -c "import tldr_code; print('OK')"
 
 # Test wrapper resolves correctly
 ~/.claude/claude2000/scripts/tldr-cli --help
@@ -418,6 +425,6 @@ echo $CLAUDE2000_DB_URL
 ### Import Errors
 
 ```bash
-# Ensure PYTHONPATH includes project root
-cd opc && PYTHONPATH=. uv run python scripts/core/recall_learnings.py ...
+# Use the installed venv directly
+cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py ...
 ```

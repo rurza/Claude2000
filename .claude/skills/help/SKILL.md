@@ -165,7 +165,7 @@ Store and recall learnings across sessions.
 
 ```bash
 # Recall past learnings
-(cd ~/Local\ Developer/Claude2000/opc && uv run python scripts/core/recall_learnings.py --query "hook patterns")
+(cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py --query "hook patterns")
 
 # Store new learning (via /remember skill)
 /remember "Hook X works by..."
