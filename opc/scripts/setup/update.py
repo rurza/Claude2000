@@ -423,8 +423,12 @@ def run_update() -> None:
     pg_status = check_embedded_postgres_status()
     if pg_status["running"]:
         schema_path = opc_dir.parent / "schema" / "init-schema.sql"
+        pgserver_venv = claude_dir / "pgserver-venv"
         if schema_path.exists():
-            result = apply_schema_if_needed(pg_status["pgdata"], schema_path)
+            result = apply_schema_if_needed(
+                pg_status["pgdata"], schema_path,
+                venv_path=pgserver_venv if pgserver_venv.exists() else None,
+            )
             if result["success"]:
                 tables_before = result.get("tables_before", 0)
                 tables_after = result.get("tables_after", 0)
