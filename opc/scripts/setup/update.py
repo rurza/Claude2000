@@ -210,6 +210,7 @@ def build_typescript_hooks(hooks_dir: Path) -> tuple[bool, str]:
 
 
 # Safe tool patterns that should be auto-approved (read-only / non-destructive)
+# These go into permissions.allow in settings.json (Claude Code's permission system)
 ALLOWED_TOOLS = [
     # TLDR CLI (read-only code analysis)
     "Bash(~/.claude/claude2000/scripts/tldr-cli *)",
@@ -227,7 +228,10 @@ ALLOWED_TOOLS = [
 
 
 def ensure_allowed_tools(settings_path: Path) -> tuple[int, int]:
-    """Ensure allowedTools in settings.json contains safe tool patterns.
+    """Ensure permissions.allow in settings.json contains safe tool patterns.
+
+    Uses Claude Code's permissions.allow format (not the legacy allowedTools key).
+    Also migrates any existing allowedTools entries to permissions.allow.
 
     Returns:
         Tuple of (added_count, already_present_count)
@@ -236,21 +240,35 @@ def ensure_allowed_tools(settings_path: Path) -> tuple[int, int]:
     if settings_path.exists():
         settings = json.loads(settings_path.read_text())
 
-    if "allowedTools" not in settings:
-        settings["allowedTools"] = []
+    # Ensure permissions.allow structure exists
+    if "permissions" not in settings:
+        settings["permissions"] = {}
+    if "allow" not in settings["permissions"]:
+        settings["permissions"]["allow"] = []
 
-    existing = set(settings["allowedTools"])
+    existing = set(settings["permissions"]["allow"])
     added = 0
     present = 0
 
+    # Migrate legacy allowedTools entries to permissions.allow
+    if "allowedTools" in settings:
+        for pattern in settings["allowedTools"]:
+            if pattern not in existing:
+                settings["permissions"]["allow"].append(pattern)
+                existing.add(pattern)
+                added += 1
+        del settings["allowedTools"]
+
+    # Add our required patterns
     for pattern in ALLOWED_TOOLS:
         if pattern not in existing:
-            settings["allowedTools"].append(pattern)
+            settings["permissions"]["allow"].append(pattern)
+            existing.add(pattern)
             added += 1
         else:
             present += 1
 
-    if added > 0:
+    if added > 0 or "allowedTools" not in settings:
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         settings_path.write_text(json.dumps(settings, indent=2) + "\n")
 
@@ -370,11 +388,11 @@ def run_update() -> None:
     try:
         added, present = ensure_allowed_tools(settings_path)
         if added > 0:
-            console.print(f"  [green]OK[/green] Added {added} auto-approve pattern(s) to allowedTools")
+            console.print(f"  [green]OK[/green] Added {added} auto-approve pattern(s) to permissions.allow")
         else:
             console.print(f"  [green]OK[/green] All {present} patterns already present")
     except Exception as e:
-        console.print(f"  [yellow]WARN[/yellow] Could not update allowedTools: {e}")
+        console.print(f"  [yellow]WARN[/yellow] Could not update permissions.allow: {e}")
 
     # Step 5: Sync project dependencies (installs llm-tldr, etc.)
     console.print("\n[bold]Step 5/7: Syncing project dependencies...[/bold]")
