@@ -989,7 +989,7 @@ async def judge_plan_with_context(plan_content: str, db_path: str = None) -> dic
     # Import context graph query functions
     import sqlite3
 
-    scripts_dir = Path(__file__).parent
+    scripts_dir = Path(__file__).resolve().parent
     sys.path.insert(0, str(scripts_dir))
     from artifact_query import get_db_path, search_handoffs
 

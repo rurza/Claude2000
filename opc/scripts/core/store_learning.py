@@ -53,8 +53,11 @@ if global_env.exists():
     load_dotenv(global_env)
 load_dotenv()
 
+# Ensure scripts package is importable regardless of cwd (must use abspath)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 # Add project to path
-project_dir = os.environ.get("CLAUDE_PROJECT_DIR", str(Path(__file__).parent.parent.parent))
+project_dir = os.environ.get("CLAUDE_PROJECT_DIR", str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, project_dir)
 
 # Valid learning types for --type parameter

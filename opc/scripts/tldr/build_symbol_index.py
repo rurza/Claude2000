@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 # Add tldr-code to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "packages" / "tldr-code"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "packages" / "tldr-code"))
 
 # Try to import TLDR API, but gracefully handle missing deps
 try:
