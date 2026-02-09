@@ -11,6 +11,7 @@ USAGE:
 """
 
 import hashlib
+import json
 import shutil
 import subprocess
 import sys
@@ -208,6 +209,54 @@ def build_typescript_hooks(hooks_dir: Path) -> tuple[bool, str]:
         return False, str(e)
 
 
+# Safe tool patterns that should be auto-approved (read-only / non-destructive)
+ALLOWED_TOOLS = [
+    # TLDR CLI (read-only code analysis)
+    "Bash(~/.claude/claude2000/scripts/tldr-cli *)",
+    # Memory recall/store
+    "Bash(cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py *)",
+    "Bash(cd ~/.claude/claude2000 && .venv/bin/python scripts/core/store_learning.py *)",
+    # Agent spawning (agents still need their own tool permissions)
+    "Task",
+    # Handoffs and research notes (thoughts directory)
+    "Edit(thoughts/**)",
+    "Write(thoughts/**)",
+    # Skills (read-only invocations)
+    "Skill",
+]
+
+
+def ensure_allowed_tools(settings_path: Path) -> tuple[int, int]:
+    """Ensure allowedTools in settings.json contains safe tool patterns.
+
+    Returns:
+        Tuple of (added_count, already_present_count)
+    """
+    settings: dict = {}
+    if settings_path.exists():
+        settings = json.loads(settings_path.read_text())
+
+    if "allowedTools" not in settings:
+        settings["allowedTools"] = []
+
+    existing = set(settings["allowedTools"])
+    added = 0
+    present = 0
+
+    for pattern in ALLOWED_TOOLS:
+        if pattern not in existing:
+            settings["allowedTools"].append(pattern)
+            added += 1
+        else:
+            present += 1
+
+    if added > 0:
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+
+    return added, present
+
+
 def run_update() -> None:
     """Run the update wizard."""
     console.print("[bold]CLAUDE2000 UPDATE WIZARD[/bold]\n")
@@ -222,7 +271,7 @@ def run_update() -> None:
         sys.exit(1)
 
     # Step 1: Git pull
-    console.print("[bold]Step 1/6: Pulling latest from GitHub...[/bold]")
+    console.print("[bold]Step 1/7: Pulling latest from GitHub...[/bold]")
     repo_root = opc_dir.parent  # Go up from opc/ to repo root
     success, msg = git_pull(repo_root)
     if success:
@@ -233,7 +282,7 @@ def run_update() -> None:
             sys.exit(1)
 
     # Step 2: Compare files
-    console.print("\n[bold]Step 2/6: Comparing installed files...[/bold]")
+    console.print("\n[bold]Step 2/7: Comparing installed files...[/bold]")
 
     # Source directories are in the repo's .claude/ integration folder
     integration_source = opc_dir.parent / ".claude"
@@ -280,7 +329,7 @@ def run_update() -> None:
             console.print(f"  {subdir}: [dim]not found in source[/dim]")
 
     # Step 3: Apply updates
-    console.print("\n[bold]Step 3/6: Applying updates...[/bold]")
+    console.print("\n[bold]Step 3/7: Applying updates...[/bold]")
 
     if not all_new and not all_updated:
         console.print("  [green]Everything is up to date![/green]")
@@ -315,8 +364,20 @@ def run_update() -> None:
 
         console.print(f"  [green]OK[/green] Applied {applied} file(s)")
 
-    # Step 4: Sync project dependencies (installs llm-tldr, etc.)
-    console.print("\n[bold]Step 4/6: Syncing project dependencies...[/bold]")
+    # Step 4: Ensure safe tools are auto-approved
+    console.print("\n[bold]Step 4/7: Updating allowed tools...[/bold]")
+    settings_path = claude_dir / "settings.json"
+    try:
+        added, present = ensure_allowed_tools(settings_path)
+        if added > 0:
+            console.print(f"  [green]OK[/green] Added {added} auto-approve pattern(s) to allowedTools")
+        else:
+            console.print(f"  [green]OK[/green] All {present} patterns already present")
+    except Exception as e:
+        console.print(f"  [yellow]WARN[/yellow] Could not update allowedTools: {e}")
+
+    # Step 5: Sync project dependencies (installs llm-tldr, etc.)
+    console.print("\n[bold]Step 5/7: Syncing project dependencies...[/bold]")
     try:
         result = subprocess.run(
             ["uv", "sync"],
@@ -351,8 +412,8 @@ def run_update() -> None:
         except Exception as e:
             console.print(f"  [yellow]WARN[/yellow] TLDR wrapper install: {e}")
 
-    # Step 5: Database schema migration
-    console.print("\n[bold]Step 5/6: Checking database schema...[/bold]")
+    # Step 6: Database schema migration
+    console.print("\n[bold]Step 6/7: Checking database schema...[/bold]")
 
     from scripts.setup.embedded_postgres import (
         apply_schema_if_needed,
@@ -382,8 +443,8 @@ def run_update() -> None:
         reason = pg_status.get("reason", "not running")
         console.print(f"  [dim]Embedded postgres not running ({reason}), skipping[/dim]")
 
-    # Step 6: Rebuild hooks if needed
-    console.print("\n[bold]Step 6/6: Rebuilding TypeScript hooks...[/bold]")
+    # Step 7: Rebuild hooks if needed
+    console.print("\n[bold]Step 7/7: Rebuilding TypeScript hooks...[/bold]")
 
     if ts_updated or all_new:
         hooks_dir = claude_dir / "hooks"
