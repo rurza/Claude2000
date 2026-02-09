@@ -224,6 +224,11 @@ ALLOWED_TOOLS = [
     "Write(thoughts/**)",
     # Skills (read-only invocations)
     "Skill",
+    # Common safe shell commands
+    "Bash(mkdir -p *)",
+    "Bash(tldr search *)",
+    "Bash(grep *)",
+    "Bash(find *)",
 ]
 
 
