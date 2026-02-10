@@ -94,6 +94,22 @@ async function main() {
   }
 }
 
+function getGitCommonDir(projectDir: string): string {
+  /**Get the git common dir (works in both normal repos and worktrees).*/
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync('git rev-parse --git-common-dir', {
+      cwd: projectDir,
+      encoding: 'utf-8',
+      timeout: 5000,
+    }).trim();
+    if (result) {
+      return path.resolve(projectDir, result);
+    }
+  } catch {}
+  return path.join(projectDir, '.git');
+}
+
 function generateAutoSummary(projectDir: string, sessionId: string): string | null {
   const timestamp = new Date().toISOString();
   const lines: string[] = [];
@@ -118,8 +134,9 @@ function generateAutoSummary(projectDir: string, sessionId: string): string | nu
     )];
   }
 
-  // Read build attempts from .git/claude
-  const gitClaudeDir = path.join(projectDir, '.git', 'claude', 'branches');
+  // Read build attempts from git common dir (worktree-safe)
+  const gitCommonDir = getGitCommonDir(projectDir);
+  const gitClaudeDir = path.join(gitCommonDir, 'claude', 'branches');
   let buildAttempts = { passed: 0, failed: 0 };
 
   if (fs.existsSync(gitClaudeDir)) {

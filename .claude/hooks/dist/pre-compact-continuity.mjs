@@ -1,6 +1,7 @@
 // src/pre-compact-continuity.ts
 import * as fs2 from "fs";
 import * as path from "path";
+import { execSync } from "child_process";
 
 // src/transcript-parser.ts
 import * as fs from "fs";
@@ -270,6 +271,20 @@ Ledger: ${mostRecent}`
     console.log(JSON.stringify(output));
   }
 }
+function getGitCommonDir2(projectDir) {
+  try {
+    const result = execSync("git rev-parse --git-common-dir", {
+      cwd: projectDir,
+      encoding: "utf-8",
+      timeout: 5000
+    }).trim();
+    if (result) {
+      return path.resolve(projectDir, result);
+    }
+  } catch {
+  }
+  return path.join(projectDir, ".git");
+}
 function generateAutoSummary(projectDir, sessionId) {
   const timestamp = (/* @__PURE__ */ new Date()).toISOString();
   const lines = [];
@@ -285,7 +300,8 @@ function generateAutoSummary(projectDir, sessionId) {
       }).filter((f) => f)
     )];
   }
-  const gitClaudeDir = path.join(projectDir, ".git", "claude", "branches");
+  const gitCommonDir = getGitCommonDir2(projectDir);
+  const gitClaudeDir = path.join(gitCommonDir, "claude", "branches");
   let buildAttempts = { passed: 0, failed: 0 };
   if (fs2.existsSync(gitClaudeDir)) {
     try {

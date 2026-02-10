@@ -28,6 +28,28 @@ def get_project_dir() -> Path:
     return Path(os.environ.get("CLAUDE_PROJECT_DIR", Path.cwd()))
 
 
+def get_git_common_dir(project_dir: Path) -> Path:
+    """Get the git common dir (works in both normal repos and worktrees).
+
+    In a normal repo: returns project_dir/.git
+    In a worktree: returns the shared .git directory of the main repo
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(project_dir), "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            common_dir = result.stdout.strip()
+            # May be relative, resolve against project_dir
+            return (project_dir / common_dir).resolve()
+    except Exception:
+        pass
+    return project_dir / ".git"
+
+
 def get_current_branch(project_dir: Path) -> str:
     """Get the current git branch name."""
     try:
@@ -162,8 +184,9 @@ def handle_bash_tool(tool_info: dict) -> None:
     current_branch = get_current_branch(project_dir)
     safe_branch = current_branch.replace("/", "-")
 
-    # Initialize branch-keyed storage
-    branch_dir = project_dir / ".git" / "claude" / "branches" / safe_branch
+    # Initialize branch-keyed storage (worktree-safe)
+    git_common = get_git_common_dir(project_dir)
+    branch_dir = git_common / "claude" / "branches" / safe_branch
     branch_dir.mkdir(parents=True, exist_ok=True)
 
     # Extract exit code and output

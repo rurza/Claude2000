@@ -59,6 +59,28 @@ KNOWN_REPOS = {
 }
 
 
+def get_git_common_dir(project_dir: str) -> Path:
+    """Get the git common dir (works in both normal repos and worktrees).
+
+    In a normal repo: returns project_dir/.git
+    In a worktree: returns the shared .git directory of the main repo
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", project_dir, "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            common_dir = result.stdout.strip()
+            # May be relative, resolve against project_dir
+            return (Path(project_dir) / common_dir).resolve()
+    except Exception:
+        pass
+    return Path(project_dir) / ".git"
+
+
 def strip_runner_prefix(command: str) -> str:
     """Strip common runner prefixes (uv run, poetry run, etc.)."""
     result = command
@@ -251,9 +273,8 @@ def process_tool_use(tool_info: dict) -> dict[str, Any]:
 
         branch = get_current_branch(project_dir)
         safe_branch = branch.replace("/", "-")
-        attempts_file = (
-            Path(project_dir) / ".git" / "claude" / "branches" / safe_branch / "attempts.jsonl"
-        )
+        git_common = get_git_common_dir(project_dir)
+        attempts_file = git_common / "claude" / "branches" / safe_branch / "attempts.jsonl"
 
         error_output = extract_output(tool_info) if exit_code != 0 else None
         log_build_attempt(attempts_file, command, exit_code, branch, error_output)
