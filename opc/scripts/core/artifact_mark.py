@@ -20,17 +20,23 @@ import sys
 # Ensure scripts package is importable regardless of cwd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Load environment from .env file
+# Load environment from .env file (prefer local opc/.env for self-contained operation)
 try:
     from dotenv import load_dotenv
-    env_path = os.path.expanduser("~/.claude/claude2000/.env")
-    if os.path.exists(env_path):
-        load_dotenv(env_path)
+    # Try local .env first (self-contained: opc/.env when run from opc/)
+    _script_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    _local_env = os.path.join(_script_dir, ".env")
+    if os.path.exists(_local_env):
+        load_dotenv(_local_env)
+    elif os.path.exists(".env"):
+        load_dotenv(".env")
     else:
-        # Also try ~/.claude/.env
-        env_path = os.path.expanduser("~/.claude/.env")
-        if os.path.exists(env_path):
-            load_dotenv(env_path)
+        # Fallback to home directory
+        for p in ["~/.claude/claude2000/.env", "~/.claude/.env"]:
+            ep = os.path.expanduser(p)
+            if os.path.exists(ep):
+                load_dotenv(ep)
+                break
 except ImportError:
     pass  # dotenv not required if env vars already set
 
@@ -50,7 +56,7 @@ async def get_latest_id() -> str | None:
 
     async with get_connection() as conn:
         row = await conn.fetchrow(
-            "SELECT id::text FROM handoffs ORDER BY indexed_at DESC LIMIT 1"
+            "SELECT id::text FROM handoffs ORDER BY created_at DESC NULLS LAST, file_path DESC LIMIT 1"
         )
         return row["id"] if row else None
 
@@ -88,7 +94,7 @@ async def list_recent() -> list:
 
     async with get_connection() as conn:
         rows = await conn.fetch(
-            "SELECT id::text, session_name, goal FROM handoffs ORDER BY indexed_at DESC LIMIT 10"
+            "SELECT id::text, session_name, goal FROM handoffs ORDER BY created_at DESC NULLS LAST, file_path DESC LIMIT 10"
         )
         return [(row["id"], row["session_name"], row["goal"]) for row in rows]
 

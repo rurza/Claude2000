@@ -34,18 +34,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 import yaml
 
-# Load .env files for CLAUDE2000_DB_URL
+# Load .env files for CLAUDE2000_DB_URL (prefer local opc/.env for self-contained operation)
 try:
     from dotenv import load_dotenv
-    # Try ~/.claude/claude2000/.env first (consolidated location)
-    claude2000_env = Path.home() / ".claude" / "claude2000" / ".env"
-    if claude2000_env.exists():
-        load_dotenv(claude2000_env)
+    # Try local .env first (self-contained: opc/.env when run from opc/)
+    _script_dir = Path(os.path.abspath(__file__)).parent.parent.parent
+    _local_env = _script_dir / ".env"
+    if _local_env.exists():
+        load_dotenv(_local_env)
+    elif Path(".env").exists():
+        load_dotenv(".env")
     else:
-        # Fallback to ~/.claude/.env
-        global_env = Path.home() / ".claude" / ".env"
-        if global_env.exists():
-            load_dotenv(global_env)
+        # Fallback to home directory
+        for p in [Path.home() / ".claude" / "claude2000" / ".env", Path.home() / ".claude" / ".env"]:
+            if p.exists():
+                load_dotenv(p)
+                break
 except ImportError:
     pass  # dotenv not required if env vars already set
 
@@ -324,8 +328,29 @@ def parse_yaml_handoff(file_path: Path, raw_content: str) -> dict:
         "turn_span_id": data.get("turn_span_id", ""),
         "session_id": session_uuid or data.get("session_id", ""),
         "braintrust_session_id": data.get("braintrust_session_id", ""),
-        "created_at": data.get("date", datetime.now().isoformat()),
+        "created_at": _to_datetime(data.get("date")),
     }
+
+
+def _to_datetime(val) -> datetime:
+    """Convert date/string/None to a datetime for asyncpg timestamptz."""
+    if val is None:
+        return datetime.now()
+    if isinstance(val, datetime):
+        return val
+    # datetime.date (from YAML) -> datetime at midnight
+    from datetime import date
+    if isinstance(val, date):
+        return datetime(val.year, val.month, val.day)
+    # string -> parse
+    if isinstance(val, str):
+        for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(val, fmt)
+            except ValueError:
+                continue
+        return datetime.now()
+    return datetime.now()
 
 
 def parse_markdown_handoff(file_path: Path, raw_content: str) -> dict:
@@ -355,7 +380,7 @@ def parse_markdown_handoff(file_path: Path, raw_content: str) -> dict:
         "turn_span_id": frontmatter.get("turn_span_id", ""),
         "session_id": session_uuid or frontmatter.get("session_id", ""),
         "braintrust_session_id": frontmatter.get("braintrust_session_id", ""),
-        "created_at": frontmatter.get("date", datetime.now().isoformat()),
+        "created_at": _to_datetime(frontmatter.get("date")),
     }
 
 
@@ -518,20 +543,12 @@ async def index_handoffs(base_path: Path = Path("thoughts/shared/handoffs")) -> 
         for handoff_file in handoff_files:
             try:
                 data = parse_handoff(handoff_file)
-                # Build searchable text for FTS
-                search_text = " ".join(filter(None, [
-                    data["session_name"],
-                    data["task_summary"],
-                    data["what_worked"],
-                    data["what_failed"],
-                    data["key_decisions"],
-                ]))
                 await conn.execute(
                     """
                     INSERT INTO handoffs
                     (session_name, file_path, goal, what_worked, what_failed,
-                     key_decisions, outcome, root_span_id, session_id, search_vector)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_tsvector('english', $10))
+                     key_decisions, outcome, root_span_id, session_id, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                     ON CONFLICT (file_path) DO UPDATE SET
                         goal = EXCLUDED.goal,
                         what_worked = EXCLUDED.what_worked,
@@ -540,7 +557,7 @@ async def index_handoffs(base_path: Path = Path("thoughts/shared/handoffs")) -> 
                         outcome = EXCLUDED.outcome,
                         root_span_id = EXCLUDED.root_span_id,
                         session_id = EXCLUDED.session_id,
-                        search_vector = EXCLUDED.search_vector,
+                        created_at = EXCLUDED.created_at,
                         indexed_at = NOW()
                     """,
                     data["session_name"],
@@ -552,7 +569,7 @@ async def index_handoffs(base_path: Path = Path("thoughts/shared/handoffs")) -> 
                     data["outcome"],
                     data["root_span_id"],
                     data["session_id"],
-                    search_text,
+                    data["created_at"],
                 )
                 count += 1
             except Exception as e:
@@ -577,18 +594,10 @@ async def index_plans(base_path: Path = Path("thoughts/shared/plans")) -> int:
         for plan_file in plan_files:
             try:
                 data = parse_plan(plan_file)
-                # Build searchable text for FTS
-                search_text = " ".join(filter(None, [
-                    data["title"],
-                    data["overview"],
-                    data["approach"],
-                    data["phases"],
-                    data["constraints"],
-                ]))
                 await conn.execute(
                     """
-                    INSERT INTO plans (id, title, file_path, overview, approach, phases, constraints, search_vector)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, to_tsvector('english', $8))
+                    INSERT INTO plans (id, title, file_path, overview, approach, phases, constraints)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
                     ON CONFLICT (id) DO UPDATE SET
                         title = EXCLUDED.title,
                         file_path = EXCLUDED.file_path,
@@ -596,7 +605,6 @@ async def index_plans(base_path: Path = Path("thoughts/shared/plans")) -> int:
                         approach = EXCLUDED.approach,
                         phases = EXCLUDED.phases,
                         constraints = EXCLUDED.constraints,
-                        search_vector = EXCLUDED.search_vector,
                         indexed_at = NOW()
                     """,
                     data["id"],
@@ -606,7 +614,6 @@ async def index_plans(base_path: Path = Path("thoughts/shared/plans")) -> int:
                     data["approach"],
                     data["phases"],
                     data["constraints"],
-                    search_text,
                 )
                 count += 1
             except Exception as e:
@@ -627,22 +634,12 @@ async def index_continuity(base_path: Path = Path(".")) -> int:
         for ledger_file in ledger_files:
             try:
                 data = parse_continuity(ledger_file)
-                # Build searchable text for FTS
-                search_text = " ".join(filter(None, [
-                    data["session_name"],
-                    data["goal"],
-                    data["state_done"],
-                    data["state_now"],
-                    data["state_next"],
-                    data["key_learnings"],
-                    data["key_decisions"],
-                ]))
                 await conn.execute(
                     """
                     INSERT INTO continuity
                     (id, session_name, goal, state_done, state_now, state_next,
-                     key_learnings, key_decisions, snapshot_reason, search_vector)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_tsvector('english', $10))
+                     key_learnings, key_decisions, snapshot_reason)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     ON CONFLICT (id) DO UPDATE SET
                         session_name = EXCLUDED.session_name,
                         goal = EXCLUDED.goal,
@@ -652,7 +649,6 @@ async def index_continuity(base_path: Path = Path(".")) -> int:
                         key_learnings = EXCLUDED.key_learnings,
                         key_decisions = EXCLUDED.key_decisions,
                         snapshot_reason = EXCLUDED.snapshot_reason,
-                        search_vector = EXCLUDED.search_vector,
                         indexed_at = NOW()
                     """,
                     data["id"],
@@ -664,7 +660,6 @@ async def index_continuity(base_path: Path = Path(".")) -> int:
                     data["key_learnings"],
                     data["key_decisions"],
                     data["snapshot_reason"],
-                    search_text,
                 )
                 count += 1
             except Exception as e:
@@ -831,17 +826,23 @@ async def async_main() -> int:
         parser.print_help()
         return 0
 
+    # Resolve project root (parent of opc/)
+    script_dir = Path(os.path.abspath(__file__))
+    # artifact_index.py is at opc/scripts/core/artifact_index.py
+    # project root is 3 levels up
+    project_root = script_dir.parent.parent.parent.parent
+
     # Show database info
     print(f"Using database: PostgreSQL ({pg_url[:30]}...)")
 
     if args.all or args.handoffs:
-        await index_handoffs()
+        await index_handoffs(project_root / "thoughts" / "shared" / "handoffs")
 
     if args.all or args.plans:
-        await index_plans()
+        await index_plans(project_root / "thoughts" / "shared" / "plans")
 
     if args.all or args.continuity:
-        await index_continuity()
+        await index_continuity(project_root)
 
     print("Done!")
     return 0
