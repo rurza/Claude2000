@@ -217,6 +217,8 @@ ALLOWED_TOOLS = [
     # Memory recall/store
     "Bash(cd ~/.claude/claude2000 && .venv/bin/python scripts/core/recall_learnings.py *)",
     "Bash(cd ~/.claude/claude2000 && .venv/bin/python scripts/core/store_learning.py *)",
+    # Artifact marking (session outcome tracking)
+    "Bash(cd ~/.claude/claude2000 && .venv/bin/python scripts/core/artifact_mark.py *)",
     # Agent spawning (agents still need their own tool permissions)
     "Task",
     # Handoffs and research notes (thoughts directory)
