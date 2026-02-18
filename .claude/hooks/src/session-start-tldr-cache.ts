@@ -69,8 +69,11 @@ function main() {
   // Warm cache in detached background process if stale
   // Uses spawn with detached:true so process exits immediately
   if (isCacheStale(projectDir)) {
-    // Cross-platform: use tldr daemon warm command
-    const child = spawn('tldr', ['daemon', 'warm', '--project', projectDir], {
+    // Resolve tldr-cli wrapper path (installed by wizard)
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+    const tldrPath = join(homeDir, '.claude', 'claude2000', 'scripts', 'tldr-cli');
+
+    const child = spawn(tldrPath, ['warm', projectDir], {
       detached: true,
       stdio: 'ignore',
       shell: process.platform === 'win32', // Shell needed on Windows

@@ -42,7 +42,7 @@ function requireOpcDir() {
 
 // src/shared/db-utils-pg.ts
 function getPgConnectionString() {
-  return process.env.CONTINUOUS_CLAUDE_DB_URL || process.env.DATABASE_URL || process.env.CLAUDE2000_POSTGRES_URL || "postgresql://claude:claude_dev@localhost:5432/continuous_claude";
+  return process.env.CLAUDE2000_DB_URL || process.env.DATABASE_URL || "postgresql://claude:claude_dev@localhost:5433/continuous_claude";
 }
 function runPgQuery(pythonCode, args = []) {
   const opcDir = requireOpcDir();
@@ -67,7 +67,7 @@ ${pythonCode}
       cwd: opcDir,
       env: {
         ...process.env,
-        CONTINUOUS_CLAUDE_DB_URL: getPgConnectionString()
+        CLAUDE2000_DB_URL: getPgConnectionString()
       }
     });
     return {
@@ -92,7 +92,7 @@ import json
 file_path = sys.argv[1]
 project = sys.argv[2]
 my_session_id = sys.argv[3]
-pg_url = os.environ.get('CONTINUOUS_CLAUDE_DB_URL') or os.environ.get('DATABASE_URL', 'postgresql://claude:claude_dev@localhost:5432/continuous_claude')
+pg_url = os.environ.get('CLAUDE2000_DB_URL') or os.environ.get('DATABASE_URL', 'postgresql://claude:claude_dev@localhost:5433/continuous_claude')
 
 async def main():
     conn = await asyncpg.connect(pg_url)
@@ -144,7 +144,7 @@ import os
 file_path = sys.argv[1]
 project = sys.argv[2]
 session_id = sys.argv[3]
-pg_url = os.environ.get('CONTINUOUS_CLAUDE_DB_URL') or os.environ.get('DATABASE_URL', 'postgresql://claude:claude_dev@localhost:5432/continuous_claude')
+pg_url = os.environ.get('CLAUDE2000_DB_URL') or os.environ.get('DATABASE_URL', 'postgresql://claude:claude_dev@localhost:5433/continuous_claude')
 
 async def main():
     conn = await asyncpg.connect(pg_url)

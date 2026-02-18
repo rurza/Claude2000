@@ -36,7 +36,9 @@ function main() {
   }
   const projectDir = process.env.CLAUDE_PROJECT_DIR || input.cwd;
   if (isCacheStale(projectDir)) {
-    const child = spawn("tldr", ["daemon", "warm", "--project", projectDir], {
+    const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+    const tldrPath = join(homeDir, ".claude", "claude2000", "scripts", "tldr-cli");
+    const child = spawn(tldrPath, ["warm", projectDir], {
       detached: true,
       stdio: "ignore",
       shell: process.platform === "win32"

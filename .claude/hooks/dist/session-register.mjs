@@ -42,7 +42,7 @@ function requireOpcDir() {
 
 // src/shared/db-utils-pg.ts
 function getPgConnectionString() {
-  return process.env.CONTINUOUS_CLAUDE_DB_URL || process.env.DATABASE_URL || process.env.CLAUDE2000_POSTGRES_URL || "postgresql://claude:claude_dev@localhost:5432/continuous_claude";
+  return process.env.CLAUDE2000_DB_URL || process.env.DATABASE_URL || "postgresql://claude:claude_dev@localhost:5433/continuous_claude";
 }
 function runPgQuery(pythonCode, args = []) {
   const opcDir = requireOpcDir();
@@ -67,7 +67,7 @@ ${pythonCode}
       cwd: opcDir,
       env: {
         ...process.env,
-        CONTINUOUS_CLAUDE_DB_URL: getPgConnectionString()
+        CLAUDE2000_DB_URL: getPgConnectionString()
       }
     });
     return {
@@ -92,7 +92,7 @@ from datetime import datetime
 session_id = sys.argv[1]
 project = sys.argv[2]
 working_on = sys.argv[3] if len(sys.argv) > 3 else ''
-pg_url = os.environ.get('CONTINUOUS_CLAUDE_DB_URL') or os.environ.get('DATABASE_URL', 'postgresql://claude:claude_dev@localhost:5432/continuous_claude')
+pg_url = os.environ.get('CLAUDE2000_DB_URL') or os.environ.get('DATABASE_URL', 'postgresql://claude:claude_dev@localhost:5433/continuous_claude')
 
 async def main():
     conn = await asyncpg.connect(pg_url)
@@ -140,7 +140,7 @@ import json
 from datetime import datetime, timedelta
 
 project_filter = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] != 'null' else None
-pg_url = os.environ.get('CONTINUOUS_CLAUDE_DB_URL') or os.environ.get('DATABASE_URL', 'postgresql://claude:claude_dev@localhost:5432/continuous_claude')
+pg_url = os.environ.get('CLAUDE2000_DB_URL') or os.environ.get('DATABASE_URL', 'postgresql://claude:claude_dev@localhost:5433/continuous_claude')
 
 async def main():
     conn = await asyncpg.connect(pg_url)

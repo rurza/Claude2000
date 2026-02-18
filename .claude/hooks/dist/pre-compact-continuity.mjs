@@ -1,7 +1,13 @@
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
+
 // src/pre-compact-continuity.ts
 import * as fs2 from "fs";
 import * as path from "path";
-import { execSync } from "child_process";
 
 // src/transcript-parser.ts
 import * as fs from "fs";
@@ -271,12 +277,13 @@ Ledger: ${mostRecent}`
     console.log(JSON.stringify(output));
   }
 }
-function getGitCommonDir2(projectDir) {
+function getGitCommonDir(projectDir) {
   try {
+    const { execSync } = __require("child_process");
     const result = execSync("git rev-parse --git-common-dir", {
       cwd: projectDir,
       encoding: "utf-8",
-      timeout: 5000
+      timeout: 5e3
     }).trim();
     if (result) {
       return path.resolve(projectDir, result);
@@ -300,7 +307,7 @@ function generateAutoSummary(projectDir, sessionId) {
       }).filter((f) => f)
     )];
   }
-  const gitCommonDir = getGitCommonDir2(projectDir);
+  const gitCommonDir = getGitCommonDir(projectDir);
   const gitClaudeDir = path.join(gitCommonDir, "claude", "branches");
   let buildAttempts = { passed: 0, failed: 0 };
   if (fs2.existsSync(gitClaudeDir)) {
@@ -360,10 +367,10 @@ function appendToLedger(ledgerPath, summary) {
   }
 }
 async function readStdin() {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     let data = "";
     process.stdin.on("data", (chunk) => data += chunk);
-    process.stdin.on("end", () => resolve(data));
+    process.stdin.on("end", () => resolve2(data));
   });
 }
 main().catch(console.error);

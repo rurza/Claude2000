@@ -4,9 +4,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-orange.svg)](https://claude.ai/code)
-[![Skills](https://img.shields.io/badge/Skills-113-green.svg)](#skills-system)
-[![Agents](https://img.shields.io/badge/Agents-48-purple.svg)](#agents-system)
-[![Hooks](https://img.shields.io/badge/Hooks-64-blue.svg)](#hooks-system)
+[![Skills](https://img.shields.io/badge/Skills-109-green.svg)](#skills-system)
+[![Agents](https://img.shields.io/badge/Agents-32-purple.svg)](#agents-system)
+[![Hooks](https://img.shields.io/badge/Hooks-30-blue.svg)](#hooks-system)
 
 **Claude2000** transforms Claude Code into a continuously learning system that maintains context across sessions, orchestrates specialized agents, and eliminates wasting tokens through intelligent code analysis.
 
@@ -18,9 +18,9 @@
 - [Quick Start](#quick-start)
 - [Architecture](#architecture)
 - [Core Systems](#core-systems)
-  - [Skills (109)](#skills-system)
-  - [Agents (32)](#agents-system)
-  - [Hooks (30)](#hooks-system)
+  - [Skills](#skills-system)
+  - [Agents](#agents-system)
+  - [Hooks](#hooks-system)
   - [TLDR Code Analysis](#tldr-code-analysis)
   - [Memory System](#memory-system)
   - [Continuity System](#continuity-system)
@@ -46,13 +46,13 @@ Claude Code has a **compaction problem**: when context fills up, the system comp
 | Starting fresh each session | Memory system recalls + daemon auto-extracts learnings |
 | Reading entire files burns tokens | 5-layer code analysis + semantic index |
 | Complex tasks need coordination | Meta-skills orchestrate agent workflows |
-| Repeating workflows manually | 109 skills with natural language triggers |
+| Repeating workflows manually | Skills with natural language triggers |
 
 **The mantra: Compound, don't compact.** Extract learnings automatically, then start fresh with full context.
 
 ### Why "2000"?
 
-**Claude2000** is a fork of [Continuous Claude](https://github.com/anthropics/Claude2000) with additional features and improvements. The name is inspired by the Nimbus 2000 from Harry Potter—a top-of-the-line broomstick that elevated Quidditch to new heights. Similarly, Claude2000 elevates Claude Code into a continuously learning, multi-agent system. Each session makes the system smarter—learnings accumulate like compound interest.
+The name is inspired by the Nimbus 2000 from Harry Potter—a top-of-the-line broomstick that elevated Quidditch to new heights. Similarly, Claude2000 elevates Claude Code into a continuously learning, multi-agent system. Each session makes the system smarter—learnings accumulate like compound interest.
 
 ---
 
@@ -158,7 +158,7 @@ ACTION: Use Skill tool BEFORE responding
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - [uv](https://github.com/astral-sh/uv) package manager
 - Claude Code CLI
 
@@ -173,20 +173,26 @@ cd Claude2000
 uv run python install.py
 ```
 
-### What the Wizard Does (9 steps)
+### What the Wizard Does
 
-| Step | What It Does |
-|------|--------------|
-| 0 | Backup existing .claude/ config (if present) |
-| 1 | Check prerequisites (Python, uv) |
-| 2 | Database configuration (embedded recommended) |
-| 3 | Embedding configuration (local or ollama) |
-| 4 | Generate configuration |
-| 5 | Database setup (migrations) |
-| 6 | Install Claude Code integration (32 agents, 109 skills, 30 hooks) |
-| 7 | TLDR code analysis tool |
-| 8 | Diagnostics tools |
-| 9 | Install scripts to ~/.claude/claude2000/ |
+The wizard asks 3 questions, then handles everything automatically:
+
+| Prompt | What It Asks |
+|--------|--------------|
+| **Install type** | Fresh install or update (if ~/.claude exists) |
+| **Mode** | Copy files or symlink to repo |
+| **Reindex threshold** | Auto-reindex after N file changes (default: 20) |
+
+Behind the scenes, it:
+1. Backs up existing config (if requested)
+2. Checks prerequisites (Python 3.12+, uv)
+3. Sets up embedded PostgreSQL (port 5433)
+4. Configures local embeddings
+5. Applies database schema
+6. Installs Claude Code integration (32 agents, 109 skills, 30 hooks)
+7. Builds TypeScript hooks
+8. Installs TLDR code analysis tool
+9. Creates ~/.claude/claude2000/ with scripts and venv
 
 ### First Session
 
@@ -219,7 +225,7 @@ claude
 │                                                                     │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐             │
 │  │   Skills    │    │   Agents    │    │    Hooks    │             │
-│  │   (109)     │───▶│    (32)     │◀───│    (30)     │             │
+│  │             │───▶│             │◀───│             │             │
 │  └─────────────┘    └─────────────┘    └─────────────┘             │
 │         │                  │                  │                     │
 │         ▼                  ▼                  ▼                     │
@@ -635,69 +641,38 @@ TLDR provides token-efficient code summaries through 5 analysis layers.
 
 #### CLI Commands
 
+The TLDR wrapper is installed at `~/.claude/claude2000/scripts/tldr-cli`. Claude Code uses it automatically via hooks and rules.
+
 ```bash
 # Structure analysis
-tldr tree src/                      # File tree
-tldr structure src/ --lang python   # Code structure (codemaps)
+tldr-cli tree src/                      # File tree
+tldr-cli structure src/ --lang python   # Code structure (codemaps)
 
 # Search and extraction
-tldr search "process_data" src/     # Find code
-tldr context process_data --project src/ --depth 2  # LLM-ready context
+tldr-cli search "process_data" src/     # Find code
+tldr-cli context process_data --project src/ --depth 2  # LLM-ready context
 
 # Flow analysis
-tldr cfg src/main.py main           # Control flow graph
-tldr dfg src/main.py main           # Data flow graph
-tldr slice src/main.py main 42      # What affects line 42?
+tldr-cli cfg src/main.py main           # Control flow graph
+tldr-cli dfg src/main.py main           # Data flow graph
+tldr-cli slice src/main.py main 42      # What affects line 42?
 
 # Codebase analysis
-tldr impact process_data src/       # Who calls this function?
-tldr dead src/                      # Find unreachable code
-tldr arch src/                      # Detect architectural layers
+tldr-cli impact process_data src/       # Who calls this function?
+tldr-cli dead src/                      # Find unreachable code
+tldr-cli arch src/                      # Detect architectural layers
 
 # Semantic search (natural language)
-tldr daemon semantic "find authentication logic"
+tldr-cli semantic search "find authentication logic"
 ```
 
-#### Semantic Index
+#### Hook Integration
 
-Beyond structural analysis, TLDR builds a **semantic index** of your codebase:
+TLDR hooks are enabled by default for automatic token savings:
 
-- **Natural language queries** — Ask "where is error handling?" instead of grepping
-- **Auto-rebuild** — Dirty flag hook tracks file changes; index rebuilds after N edits
-- **Selective indexing** — Use `.tldrignore` to control what gets indexed
-
-```bash
-# .tldrignore example
-__pycache__/
-*.test.py
-node_modules/
-.venv/
-```
-
-The semantic index uses all 5 layers plus 10 lines of surrounding code context—not just docstrings.
-
-#### Hook Integration (Optional)
-
-TLDR hooks are **enabled by default** for automatic token savings. You can opt-out if you prefer manual control.
-
-**With hooks enabled (default):**
 - **tldr-read-enforcer**: Returns L1+L2+L3 instead of full file reads
 - **smart-search-router**: Routes Grep to `tldr search`
-- **post-tool-use-tracker**: Updates indexes when files change
-
-**With hooks disabled (opt-out):**
-- Use TLDR manually via CLI commands when needed
-- Tools behave as documented (Read returns files, Grep searches text)
-
-**Enable/disable during setup:**
-```bash
-uv run python -m scripts.setup.wizard  # Step 9 asks about hooks (default: Yes)
-```
-
-**Disable for existing installation:**
-```bash
-cd opc && python3 scripts/disable_tldr_hooks.py
-```
+- **session-start-tldr-cache**: Warms cache on session startup
 
 [See TLDR documentation →](opc/packages/tldr-code/)
 
@@ -966,19 +941,22 @@ uv run python update.py
 
 This will:
 - Pull latest from GitHub
-- Update hooks, skills, rules, agents
-- Upgrade TLDR if installed
+- Compare and update hooks, skills, rules, agents
+- Sync project dependencies (TLDR, etc.)
+- Check database schema for migrations
 - Rebuild TypeScript hooks if changed
+- Update auto-approve permissions
 
 ### What Gets Installed
 
 | Component | Location |
 |-----------|----------|
-| Agents (32) | ~/.claude/agents/ |
-| Skills (109) | ~/.claude/skills/ |
-| Hooks (30) | ~/.claude/hooks/ |
+| Agents | ~/.claude/agents/ |
+| Skills | ~/.claude/skills/ |
+| Hooks | ~/.claude/hooks/ |
 | Rules | ~/.claude/rules/ |
-| Scripts | ~/.claude/claude2000/ |
+| Scripts + venv | ~/.claude/claude2000/ |
+| Embedded PostgreSQL | ~/.claude/pgdata/ |
 
 ### Installation Mode: Copy vs Symlink
 
@@ -1123,8 +1101,7 @@ Skill activation triggers.
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `CLAUDE_2000_DIR` | Path to ~/.claude/claude2000 (set by wizard) | Auto |
-| `CLAUDE_OPC_DIR` | Alias for backwards compatibility | Auto |
+| `CLAUDE2000_DB_URL` | PostgreSQL connection string (set by wizard in ~/.claude/.env) | Auto |
 | `CLAUDE_PROJECT_DIR` | Current project directory (set by SessionStart hook) | Auto |
 | `BRAINTRUST_API_KEY` | Session tracing | No |
 | `PERPLEXITY_API_KEY` | Web search | No |
@@ -1198,12 +1175,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
 - **[Morph](https://www.morphllm.com)** - WarpGrep fast code search
 - **[Firecrawl](https://www.firecrawl.dev)** - Web scraping API
 - **[RepoPrompt](https://repoprompt.com)** - Token-efficient codebase maps
-
----
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=parcadei/Continuous-Claude-v2&type=timeline)](https://star-history.com/#parcadei/Continuous-Claude-v2&Date)
 
 ---
 
